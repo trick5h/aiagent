@@ -1,0 +1,1 @@
+start cmd /k "npx @modelcontextprotocol/inspector python %~dp0\server.py"
