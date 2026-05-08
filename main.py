@@ -1,7 +1,7 @@
-import asyncio 
+import asyncio
+from pathlib import Path 
 from mcp import ClientSession, StdioServerParameters 
-from mcp.client.stdio 
-import stdio_client 
+from mcp.client.stdio import stdio_client 
 import ollama 
 import json 
 
@@ -53,7 +53,7 @@ def load_soul() -> str:
     return SOUL_PATH.read_text(encoding="utf-8")
 
 
-def build_system_prompt(tools_prompt: str) -> str:
+def build_system_prompt() -> str:
     soul = load_soul()
     return f"""\
 {soul}
@@ -63,6 +63,27 @@ def build_system_prompt(tools_prompt: str) -> str:
 - Do not invent tool results.
 """
 
+def tool_result_to_text(result: Any) -> str:
+    if result is None:
+        return ""
+
+    if hasattr(result, "content"):
+        content = result.content
+
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                text = getattr(block, "text", None)
+                if text is not None:
+                    parts.append(text)
+                else:
+                    parts.append(str(block))
+            return "\n".join(parts)
+
+        if isinstance(content, str):
+            return content
+
+        return str(content)
 
 # =========================
 # Main Agent
@@ -70,8 +91,9 @@ def build_system_prompt(tools_prompt: str) -> str:
 
 async def run_mcp_agent(): 
     # A. 設定如何啟動你的 Server (stdio 模式) 
-    server_params = StdioServerParameters( command="python", # 或是 "python3" 
-    args=SERVER_PATH, # 你的 FastMCP 程式碼檔案 
+    server_params = StdioServerParameters(
+        command="python", # 或是 "python3" 
+        args=[str(SERVER_PATH)], # 你的 FastMCP 程式碼檔案 
     ) 
     # B. 建立連線 
     async with stdio_client(server_params) as (read, write): 
@@ -91,7 +113,7 @@ async def run_mcp_agent():
             
             
             # 2. 獲取memory與System Prompt
-            system_prompt = build_system_prompt(tools_prompt)
+            system_prompt = build_system_prompt()
             
             messages = load_memory(MEMORY_PATH)
             if not messages or messages[0].get("role") != "system":

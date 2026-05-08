@@ -17,8 +17,11 @@ def get_system_health() -> str:
         f"磁碟空間: 已用 {used // (2**30)}GB / 剩餘 {free // (2**30)}GB"
     )
 
+#======================================================
 # 定義 RDL 存放目錄
 RDL_DIR = "D:/AiAgent/workspace"
+#======================================================
+
 @mcp.tool()
 def analyze_report_params(report_name: str) -> str:
     """
@@ -59,10 +62,10 @@ def analyze_report_data(report_name: str) -> str:
     if not report_name.endswith(".rdl"):
         report_name += ".rdl"
         
-    file_path = os.path.join(RDL_FOLDER, report_name)
+    file_path = os.path.join(RDL_DIR, report_name)
     
     if not os.path.exists(file_path):
-        return f"錯誤：在路徑 {RDL_FOLDER} 找不到報表檔案 '{report_name}'。"
+        return f"錯誤：在路徑 {RDL_DIR} 找不到報表檔案 '{report_name}'。"
 
     try:
         tree = ET.parse(file_path)
@@ -100,10 +103,10 @@ def analyze_report_data(report_name: str) -> str:
     except Exception as e:
         return f"解析 RDL 時發生錯誤: {str(e)}"
         
-@mcp_tool
+@mcp.tool()
 def get_url_image(id: int):
     
-    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + id
+    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
 
     # 1. 定義路徑：當前資料夾 (os.getcwd()) 的 上一層 (..)
     # 假設我們要存成 'result.jpg'
@@ -114,7 +117,7 @@ def get_url_image(id: int):
     module_dir = os.path.dirname(module_path)
 
     # 3. 取得該資料夾的上一層 (Project)
-    target_dir = os.path.abspath(os.path.join(module_dir, "..", "result.jpg"))
+    target_dir = os.path.abspath(os.path.join(module_dir, "../../workspace", "result.png"))
 
     # 2. 直接下載
 

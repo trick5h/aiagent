@@ -1,14 +1,11 @@
-from server import mcp
-from pydantic import Field
 import xml.etree.ElementTree as ET
-import psutil
-import shutil
 import os
+import urllib.request
 
 
 # 定義 RDL 存放目錄
 RDL_DIR = "D:/AiAgent/workspace"
-@mcp.tool()
+
 def analyze_report_params(report_name: str) -> str:
     """
     讀取指定的 RDL 檔案並回傳它需要的參數清單。
@@ -48,10 +45,10 @@ def analyze_report_data(report_name: str) -> str:
     if not report_name.endswith(".rdl"):
         report_name += ".rdl"
         
-    file_path = os.path.join(RDL_FOLDER, report_name)
+    file_path = os.path.join(RDL_DIR, report_name)
     
     if not os.path.exists(file_path):
-        return f"錯誤：在路徑 {RDL_FOLDER} 找不到報表檔案 '{report_name}'。"
+        return f"錯誤：在路徑 {RDL_DIR} 找不到報表檔案 '{report_name}'。"
 
     try:
         tree = ET.parse(file_path)
@@ -80,9 +77,9 @@ def analyze_report_data(report_name: str) -> str:
                 fields.append(field.get("Name"))
             
             if fields:
-                report_structure.append(f"資料集 [{ds_name}] 包含欄位: {', '.join(fields)}")
+                report_structure.append(f"Dataset [{ds_name}] columns: {', '.join(fields)}")
             else:
-                report_structure.append(f"資料集 [{ds_name}] 未定義具體欄位。")
+                report_structure.append(f"Dataset [{ds_name}] has no columns defined.")
 
         return f"--- 報表結構分析：{report_name} ---\n" + "\n".join(report_structure)
 
@@ -91,7 +88,7 @@ def analyze_report_data(report_name: str) -> str:
 
 def get_url_image(id: int):
     
-    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + id
+    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
 
     # 1. 定義路徑：當前資料夾 (os.getcwd()) 的 上一層 (..)
     # 假設我們要存成 'result.jpg'
@@ -102,7 +99,7 @@ def get_url_image(id: int):
     module_dir = os.path.dirname(module_path)
 
     # 3. 取得該資料夾的上一層 (Project)
-    target_dir = os.path.abspath(os.path.join(module_dir, "..", "result.jpg"))
+    target_dir = os.path.abspath(os.path.join(module_dir, "../../workspace", "result.png"))
 
     # 2. 直接下載
 
@@ -115,9 +112,9 @@ def get_url_image(id: int):
 
     print(f"下載成功，檔案在：{target_dir}")
 
-print(analyze_report_params("TestList"))
-print(analyze_report_params("TestList"))
-print(analyze_report_data("TestFleet"))
-print(analyze_report_data("TestList"))
+#print(analyze_report_params("TestFleet"))
+#print(analyze_report_params("TestList"))
+#print(analyze_report_data("TestFleet"))
+#print(analyze_report_data("TestList"))
 
 get_url_image(544)
