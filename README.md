@@ -12,52 +12,50 @@ This project implements an intelligent Report Management Agent using the **Model
 
 The system operates through a three-layer architecture:
 
-1. **Orchestrator (OpenClaw):** Manages user intent and tool selection.
+1. **LLM (Ollama):** Manages user intent and tool selection.
 2. **Bridge (Python MCP):** Acts as the brain, parsing RDL structures (XML) and managing logic.
-3. **Engine (C# CLI):** A specialized .NET wrapper that utilizes `Microsoft.ReportViewer` to render pixel-perfect PDFs from RDL templates.
-
 ## 🛠️ Prerequisites & Packages
 
-### 1. Python Environment (The Bridge)
+### 1. Python Environment
 
 The Python layer handles the MCP protocol and XML parsing.
 
 * **Python 3.10+**
 * **Packages:**
+* `ollama`: Handling LLM input and responses.
+* `mcp`: Managing local connection to the MCP server.
 * `fastmcp`: High-level framework for building MCP servers.
 * `xml.etree.ElementTree`: (Built-in) For RDL structure analysis.
 
 
 
 ```bash
+pip install mcp
 pip install fastmcp
 
 ```
 
-### 2. .NET Environment (The Engine)
-
-Required to render RDL files locally without an SSRS Server.
-
-* **.NET SDK 6.0/8.0** (Visual Studio 2022 recommended)
-* **NuGet Packages:**
-* `Microsoft.ReportingServices.ReportViewerControl.Winforms`: The core rendering engine.
 
 
-
-### 3. System Requirements (Windows)
+### 2. System Requirements (Windows)
 
 * **SQL Server Types:** Required by the Report Viewer control for spatial data support.
 
 ## 📂 Project Structure
 
 ```text
-├── mcp-server/
-│   ├── main.py              # Python MCP entry point
-│   └── reports/             # Folder containing your .rdl files
-├── rdl-engine/
-│   ├── RdlExporter.cs       # C# CLI Source code
-│   └── RdlExporter.exe      # Compiled rendering binary
-└── exports/                 # Generated PDF destination
+├── main.py
+├── mcpServer/
+│   ├── server.py          # Python MCP entry point
+│   └── tools/             # Folder containing all available tools for the agent
+│       ├── system_tools.py 
+│       └── user_tools.py  
+├── agent/
+│   ├── mcp_client.py      # Connects to the Python MCP server
+│   └── prompt.py          # Generates prompts for the LLM based on templates
+├── workspace/             # Place for reports and temporary files
+├── MEMORY.py              # Stores long-term memory and logs
+└── SOUL.py                # Strict rules for decision-making and tool selection
 
 ```
 
@@ -65,31 +63,22 @@ Required to render RDL files locally without an SSRS Server.
 
 The agent exposes the following capabilities:
 
-| Tool | Input | Description |
-| --- | --- | --- |
-| `analyze_report_data` | `report_name` | Parses the RDL XML to list available DataSets and Fields. |
-| `generate_rdl_pdf` | `name`, `params` | Triggers the C# Engine to produce a PDF report. |
+| Tool | Input         | Description                                               |
+| --- |---------------|-----------------------------------------------------------|
+| `analyze_report_data` | `report_name` | Parses the RDL XML to list available DataSets. |
+| `get_url_image` | `id`          | Downloads the image.                                      |
 
-## ⚙️ Configuration in OpenClaw
-
-To register this agent, run the following command in your terminal:
-
-```powershell
-$mcpConfig = '{"command": "python", "args": ["D:/path/to/main.py"]}'
-openclaw mcp set report-manager $mcpConfig
-
-```
 
 ## 📝 Usage Example
 
 **User:** "Show me the structure of the SalesReport."
 **Agent:** (Calls `analyze_report_data`) "This report contains fields: OrderID, Customer, and TotalAmount."
 
-**User:** "Great, generate a PDF for Customer 'Gemini' and save it."
-**Agent:** (Calls `generate_rdl_pdf`) "Success! Your report is ready at D:/Exports/SalesReport_result.pdf."
+**User:** "Great, download the image for Customer 'Gemini' and save it."
+**Agent:** (Calls `get_url_image`) "Success! Your image is ready at D:/workspace/result.png."
 
 ---
 
 ## 🔒 Security Note
 
-This agent is designed for local use. Ensure that the RDL directory is secured and that user-provided parameters are sanitized within the Python bridge to prevent path traversal or SQL injection.
+This agent is designed for local use.
