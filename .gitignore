@@ -1,0 +1,8 @@
+# 忽略 Python 自動產生的快取
+__pycache__/
+*.py[cod]
+
+# 忽略虛擬環境資料夾
+.venv/
+venv/
+env/

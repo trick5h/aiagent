@@ -11,6 +11,13 @@ import time
 from datetime import datetime
 import anyio
 import sys
+import time
+import traceback
+import warnings
+
+# 隱藏所有過時警告
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 
 # =========================
 # Config
@@ -23,7 +30,7 @@ SOUL_PATH = Path("SOUL.md")
 MEMORY_PATH = Path("MEMORY.md")
 MAX_TOOL_LOOPS = 8
 LOG_PATH = Path(__file__).resolve().parent / "logs.jsonl"
-SESSION_LOG_HEADER = "## Session Log"
+SESSION_LOG_HEADER = "## Session Summary Log"
 SESSION_MEMORY_LIMIT = 5
 
 # =========================
@@ -372,6 +379,18 @@ def print_streaming(text: str, delay: float = 0.02) -> None:
 
 
 
+
+def is_shell_noise_input(text: str) -> bool:
+    normalized = " ".join(text.split()).lower()
+    if not normalized:
+        return True
+    return (
+        "set-executionpolicy" in normalized
+        and "activate.ps1" in normalized
+    ) or normalized.startswith("(& ") and "activate" in normalized
+
+
+
 # ===========================================================================
 ###############################################################################
 #                                                                             #
@@ -413,8 +432,9 @@ async def run_mcp_agent():
                         "mcp_tools": ollama_tools,
                     })
 
-                    print("tool count:", len(mcp_tools.tools))
-                    print([t.name for t in mcp_tools.tools])
+                    if len(mcp_tools.tools) > 0:
+                        print(">>>>>>> MCP Server:", len(mcp_tools.tools), "Tools successfully initialized. \n")
+                        #print([t.name for t in mcp_tools.tools])
 
                     # 提取可用工具名稱
                     available_tool_names = {t.name for t in mcp_tools.tools}
@@ -426,11 +446,36 @@ async def run_mcp_agent():
                     
                     # 3. 開始迴圈 
                     print("Agent started. Type 'exit' to quit.\n")
+                    input_eof_retries = 0
+                    max_input_eof_retries = 3
+                    input_eof_retry_delay_seconds = 0.5
                     
                     while True:
-                        user_input = await asyncio.to_thread(input, "You > ")
-                        if user_input.strip().lower() == "exit":
+                        try:
+                            user_input = input("You > ")
+                        except EOFError:
+                            input_eof_retries += 1
+                            if input_eof_retries < max_input_eof_retries:
+                                print(f"Loading...")
+                                time.sleep(input_eof_retry_delay_seconds)
+                                continue
+                            print("> Error: Terminal input repeatedly, exiting.")
                             break
+                        except KeyboardInterrupt:
+                            print("\n> Interrupted by user, exiting.")
+                            break
+                        except Exception as e:
+                            print(f"> Error reading input: {e}")
+                            _append_log({"timestamp": datetime.now(), "type": "error", "error": f"input error: {e}"})
+                            break
+
+                        input_eof_retries = 0
+
+                        if is_shell_noise_input(user_input):
+                            continue
+
+                        if user_input.strip().lower() == "exit":
+                            return
                         
                         user_message = {"role": "user", "content": user_input}
                         messages.append(user_message)
@@ -441,6 +486,7 @@ async def run_mcp_agent():
                         failed_tools: set[str] = set()
                         llm_failed = False
                         successful_tool_result_text = ""
+                        skip_final_answer = False
                 
                         for _ in range(MAX_TOOL_LOOPS):
                     
@@ -531,21 +577,52 @@ async def run_mcp_agent():
                                     
                                     print(f"> 正在執行工具: {tool_name}...") 
                                     
-                                    # 透過 MCP Session 執行 
+                                    # 透過 MCP Session 執行 (with timeout protection)
                                     try:
-                                        result = await session.call_tool(
-                                            tool_name,
-                                            arguments=tool_args,
-                                        )
+                                        # 若遇到 asyncio.CancelledError，代表底層會話或子程序可能在啟動階段被取消
+                                        # 我們嘗試重試幾次，以降低因 race condition 導致的單次失敗
+                                        max_cancel_retries = 3
+                                        cancel_attempt = 0
+                                        result = None
+                                        while True:
+                                            try:
+                                                result = await asyncio.wait_for(
+                                                    session.call_tool(
+                                                        tool_name,
+                                                        arguments=tool_args,
+                                                    ),
+                                                    timeout=60  # 60 second timeout per tool
+                                                )
+                                                break
+                                            except Exception as e:
+                                                cancel_attempt += 1
+                                                tb = traceback.format_exc()
+                                                tool_text = f"Tool call cancelled (attempt {cancel_attempt}/{max_cancel_retries}): {type(e).__name__}: {e}"
+                                                print(f"> {tool_text}")
+                                                log_tool_call(tool_name, tool_args, result=tool_text, error=tb)
+                                                if cancel_attempt >= max_cancel_retries:
+                                                    # 轉為 BrokenResourceError，觸發外層重連機制
+                                                    raise anyio.BrokenResourceError(f"call_tool cancelled repeatedly: {e}")
+                                                await asyncio.sleep(0.5)
+
                                         tool_text = tool_result_to_text(result)
                                         log_tool_call(tool_name, tool_args, result=result)
+                                        if tool_text:
+                                            print(f"> 工具結果: {tool_text}")
+                                    except asyncio.TimeoutError:
+                                        tool_text = f"Tool execution timeout (60s): {tool_name}"
+                                        print(f"> {tool_text}")
+                                        log_tool_call(tool_name, tool_args, result=tool_text, error="Timeout")
+                                        failed_tools.add(tool_name)
                                     except anyio.BrokenResourceError as e:
                                         tool_text = f"Tool execution failed due to broken MCP connection: {e}"
                                         log_tool_call(tool_name, tool_args, result=tool_text, error=e)
                                         failed_tools.add(tool_name)
-                                        raise
+                                        print(f"> MCP 連接已斷裂，將重新連接...")
+                                        raise  # Re-raise to trigger outer reconnection logic
                                     except Exception as e:
-                                        tool_text = f"Tool execution failed: {e}"
+                                        tool_text = f"Tool execution failed: {type(e).__name__}: {e}"
+                                        print(f"> 工具執行失敗: {tool_text}")
                                         log_tool_call(tool_name, tool_args, result=tool_text, error=e)
                                         failed_tools.add(tool_name)
                                     _append_tool_message(messages, call, tool_text)
@@ -572,6 +649,17 @@ async def run_mcp_agent():
                             # 回到使用者輸入循環，讓使用者修正模型設定或重試
                             continue
 
+                        if skip_final_answer:
+                            append_memory_summary(
+                                MEMORY_PATH,
+                                _build_turn_summary(
+                                    user_input=user_input,
+                                    assistant_text=successful_tool_result_text,
+                                    tool_text=successful_tool_result_text,
+                                ),
+                            )
+                            continue
+
                         if successful_tool_result_text:
                             final_messages = _dedupe_consecutive_messages(messages)
                             final_messages.append({
@@ -584,26 +672,40 @@ async def run_mcp_agent():
                                 "tools": "disabled",
                             }
                             start_final = time.perf_counter()
-                            final_report = ollama.chat(
-                                model=MODEL,
-                                messages=final_messages,
-                                options={"temperature": 0.7},
-                            )
-                            if inspect.isawaitable(final_report):
-                                final_report = await final_report
-                            end_final = time.perf_counter()
-                            log_llm_call(final_request, response=final_report, start=start_final, end=end_final)
-                            final_report = _normalize_chat_response(final_report)
-                            final_text = str(final_report.get('message', {}).get('content', ''))
-                            print_streaming(final_text)
-                            append_memory_summary(
-                                MEMORY_PATH,
-                                _build_turn_summary(
-                                    user_input=user_input,
-                                    assistant_text=final_text,
-                                    tool_text=successful_tool_result_text,
-                                ),
-                            )
+                            try:
+                                final_report = ollama.chat(
+                                    model=MODEL,
+                                    messages=final_messages,
+                                    options={"temperature": 0.7},
+                                )
+                                if inspect.isawaitable(final_report):
+                                    final_report = await final_report
+                                end_final = time.perf_counter()
+                                log_llm_call(final_request, response=final_report, start=start_final, end=end_final)
+                                final_report = _normalize_chat_response(final_report)
+                                final_text = str(final_report.get('message', {}).get('content', ''))
+                                print_streaming(final_text)
+                                append_memory_summary(
+                                    MEMORY_PATH,
+                                    _build_turn_summary(
+                                        user_input=user_input,
+                                        assistant_text=final_text,
+                                        tool_text=successful_tool_result_text,
+                                    ),
+                                )
+                            except Exception as e:
+                                end_final = time.perf_counter()
+                                log_llm_call(final_request, response=None, error=e, start=start_final, end=end_final)
+                                print(f"> 最終回答生成失敗: {type(e).__name__}: {e}")
+                                print_streaming(successful_tool_result_text)
+                                append_memory_summary(
+                                    MEMORY_PATH,
+                                    _build_turn_summary(
+                                        user_input=user_input,
+                                        assistant_text=successful_tool_result_text,
+                                        tool_text=successful_tool_result_text,
+                                    ),
+                                )
                             continue
         except anyio.BrokenResourceError as e:
             print("MCP connection broken, reconnecting in 2s...", e)
@@ -613,14 +715,28 @@ async def run_mcp_agent():
                 pass
             await asyncio.sleep(2)
             continue
-        except (asyncio.CancelledError, KeyboardInterrupt):
-            print("> Agent stopped.")
+        except KeyboardInterrupt:
+            print("> Agent stopped by user.")
+            return
+        except (asyncio.CancelledError, EOFError) as e:
+            print(f"> Agent stopped: {type(e).__name__}")
+            try:
+                _append_log({"timestamp": datetime.now(), "type": "error", "error": f"agent stop: {type(e).__name__}: {str(e)}"})
+            except Exception:
+                pass
+            return
+        except Exception as e:
+            print(f"> Agent crashed: {type(e).__name__}: {e}")
+            try:
+                _append_log({"timestamp": datetime.now(), "type": "error", "error": f"agent crash: {type(e).__name__}: {e}"})
+            except Exception:
+                pass
             return
                 
                 
 if __name__ == "__main__":
-    # Windows 事件避免首次執行時的異步 IO 問題
-    if sys.platform == "win32":
-        loop = asyncio.SelectorEventLoop()
-        asyncio.set_event_loop(loop)
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # For Windows compatibility
+    except Exception as e:
+        print(f"> Failed to set event loop policy: {e}")
     asyncio.run(run_mcp_agent())

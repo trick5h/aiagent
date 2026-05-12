@@ -5,6 +5,7 @@ import psutil
 import shutil
 import os
 import urllib.request
+from datetime import datetime
 
 @mcp.tool()
 def get_system_health() -> str:
@@ -19,7 +20,7 @@ def get_system_health() -> str:
 
 #======================================================
 # 定義 RDL 存放目錄
-RDL_DIR = "D:/AiAgent/workspace"
+WORKSPACE_DIR = "D:/AiAgent/workspace"
 #======================================================
 
 @mcp.tool()
@@ -28,7 +29,7 @@ def analyze_report_params(report_name: str) -> str:
     讀取指定的 RDL 檔案並回傳它需要的參數清單。
     例如輸入 'Sales_Monthly'，會回傳該報表需要的日期、地區等參數。
     """
-    file_path = os.path.join(RDL_DIR, f"{report_name}.rdl")
+    file_path = os.path.join(WORKSPACE_DIR, f"{report_name}.rdl")
     if not os.path.exists(file_path):
         return f"錯誤：找不到報表檔案 {report_name}"
 
@@ -42,7 +43,8 @@ def analyze_report_params(report_name: str) -> str:
         # 尋找 ReportParameters 節點
         for param in root.findall(".//rdl:ReportParameter", ns):
             p_name = param.get("Name")
-            p_type = param.find("rdl:DataType", ns).text if param.find("rdl:DataType", ns) is not None else "Unknown"
+            data_type_node = param.find("rdl:DataType", ns)
+            p_type = data_type_node.text if data_type_node is not None and data_type_node.text is not None else "Unknown"
             params.append(f"- {p_name} ({p_type})")
         
         if not params:
@@ -62,10 +64,10 @@ def analyze_report_data(report_name: str) -> str:
     if not report_name.endswith(".rdl"):
         report_name += ".rdl"
         
-    file_path = os.path.join(RDL_DIR, report_name)
+    file_path = os.path.join(WORKSPACE_DIR, report_name)
     
     if not os.path.exists(file_path):
-        return f"錯誤：在路徑 {RDL_DIR} 找不到報表檔案 '{report_name}'。"
+        return f"錯誤：在路徑 {WORKSPACE_DIR} 找不到報表檔案 '{report_name}'。"
 
     try:
         tree = ET.parse(file_path)
@@ -105,29 +107,25 @@ def analyze_report_data(report_name: str) -> str:
         
 @mcp.tool()
 def get_url_image(id: int):
-    
-    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
+    try:
+        url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
 
-    # 1. 定義路徑：當前資料夾 (os.getcwd()) 的 上一層 (..)
-    # 假設我們要存成 'result.jpg'
-    # 1. 取得 downloader.py 本身的絕對路徑
-    module_path = os.path.abspath(__file__) 
+        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        target_file_name = f"{timestamp}_{id}.png"
+        target_path = os.path.abspath(os.path.join(WORKSPACE_DIR, target_file_name))
 
-    # 2. 取得該檔案所在的資料夾 (libs)
-    module_dir = os.path.dirname(module_path)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
-    # 3. 取得該資料夾的上一層 (Project)
-    target_dir = os.path.abspath(os.path.join(module_dir, "../../workspace", "result.png"))
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('User-Agent', 'Mozilla/5.0')]
+        urllib.request.install_opener(opener)
 
-    # 2. 直接下載
+        request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(request, timeout=20) as response, open(target_path, "wb") as output_file:
+            shutil.copyfileobj(response, output_file)
 
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-Agent', 'Mozilla/5.0')]
-    urllib.request.install_opener(opener)
-
-    urllib.request.urlretrieve(url, target_dir)
-
-
-    print(f"下載成功，檔案在：{target_dir}")
+        return f"下載成功，檔案在：{target_path}"
+    except Exception as e:
+        return f"下載失敗：{type(e).__name__}: {e}"
 
 
