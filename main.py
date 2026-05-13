@@ -14,6 +14,8 @@ import sys
 import time
 import traceback
 import warnings
+import subprocess
+import time
 
 # 隱藏所有過時警告
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -35,6 +37,18 @@ SESSION_MEMORY_LIMIT = 5
 # 用於快速判斷是否為元問題的輕量分類器（可替換為更小的本地模型）
 SMALL_MODEL = MODEL  # 當前環境預設使用同模型，視情況替換為更小模型
 
+def start_ollama():
+    try:
+        # 在背景啟動 Ollama 服務（避免阻塞 Python 程式）
+        print("正在啟動 Ollama 服務...")
+        subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 等待 3 秒讓服務完全初始化
+        time.sleep(3)
+        #subprocess.run(["ollama", "run", model])
+               
+    except FileNotFoundError:
+        print("錯誤：找不到 ollama 指令。請確認已安裝 Ollama 並已加入系統環境變數 (PATH)。")
 
 # =========================
 # Tools Determination
@@ -54,9 +68,10 @@ async def is_user_query_needs_tools(user_input: str, tool_result: str | None) ->
 
     Rules:
     1. If the question is general and does not explicitly require specific data: output NO.
-    2. If the data contains the answer: Output NO.
-    3. If the data is not related to the question or missing key fields needed for the answer: Output YES.
-    4. If you are not sure if the data contains the answer, lean towards YES to allow tool usage.
+    2. If the data or chat context contains the direct answer: Output NO.
+    3. If the data is not related to the question or missing key data needed for the answer: Output YES.
+    4. If the results only contain the fields name or running a query to know the exact data is needed: Output YES.
+    5. If you are not sure if the data contains the answer: Output YES.
 
     Does it need MORE tool calls? Answer only YES or NO."""
 
@@ -65,7 +80,7 @@ async def is_user_query_needs_tools(user_input: str, tool_result: str | None) ->
         {"role": "user", "content": f"User Question: {user_input}\n\nCurrent Tool Result: {tool_result}"},
     ]
 
-    print(f"> [Debug] 判斷是否需要工具，問題: {user_input}, 工具結果: {tool_result}")
+    print(f"> [Debug] 判斷是否需要工具，問題: {user_input}, 工具結果:({tool_result})")
     try:
         resp = ollama.chat(
             model=SMALL_MODEL,
@@ -100,7 +115,7 @@ def load_recent_memory_notes(path: Path, limit: int = SESSION_MEMORY_LIMIT) -> s
 
     session_lines = [
         line for line in lines
-        if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}: ", line)
+        if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},", line)
     ]
     if not session_lines:
         return ""
@@ -398,7 +413,8 @@ def _build_final_answer_prompt(tool_result_text: str) -> str:
         "- MUST directly answer the user's question using the result above\n"
         "- MUST NOT output JSON, code, or any structured format\n"
         "- MUST NOT attempt to call any tools or functions\n"
-        "- Keep answer concise and relevant to the question"
+        "- Keep answer concise and relevant to the question\n"
+        "- This result is not a single direct output, but the outcome of multiple repeated processing steps. Please do not assume it represents all available data."
     )
 
 
@@ -538,7 +554,7 @@ async def run_mcp_agent():
                         if user_input.strip().lower() == "exit":
                             return
                         
-                        user_message = {"role": "user", "content": user_input}
+                        user_message = {"role": "user", "content": "It's" + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "now. " + user_input}
                         messages.append(user_message)
                         # Quick heuristic: decide whether this user input needs tools
                         needs_tools = await is_user_query_needs_tools(user_input, tool_result='')
@@ -908,6 +924,7 @@ async def run_mcp_agent():
                 
                 
 if __name__ == "__main__":
+    start_ollama()
     try:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # type: ignore # For Windows compatibility
     except Exception as e:

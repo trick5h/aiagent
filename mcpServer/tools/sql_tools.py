@@ -27,8 +27,8 @@ def sql_json_serializer(obj):
 
 
 @mcp.tool()
-def list_tables(name='') -> str:
-    """如果不確定資料庫中的表名稱，用此搜尋資料庫中是否有相關名稱的資料表(sys.tables)。請盡量傳入參數，否則預設會列出所有資料表名稱。"""
+def list_tables(name) -> str:
+    """如果不確定資料庫中的表名稱，用此搜尋資料庫中是否有相關名稱的資料表(sys.tables)。請傳入參數，以使用like '%{name}%' 比對。"""
     
     sql="""select name 
     from sys.tables 

@@ -19,5 +19,5 @@ def search(
     query: str,
     limit: int = Field(default=10, description="回傳結果數量")
 ):
-    """注意：此工具會回傳該搜尋條件。"""
-    return "Test:" + query
+    """注意：此工具只會回傳搜尋條件。"""
+    return "Result:" + query
