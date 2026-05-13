@@ -1,0 +1,10 @@
+## Main
+pip install anyio
+pip install pydantic
+pip install ollama
+
+## MCP Server
+pip install fastmcp
+
+## SQL Tools
+pip install pyodbc

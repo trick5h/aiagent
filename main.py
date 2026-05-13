@@ -32,6 +32,58 @@ MAX_TOOL_LOOPS = 8
 LOG_PATH = Path(__file__).resolve().parent / "logs.jsonl"
 SESSION_LOG_HEADER = "## Session Summary Log"
 SESSION_MEMORY_LIMIT = 5
+# 用於快速判斷是否為元問題的輕量分類器（可替換為更小的本地模型）
+SMALL_MODEL = MODEL  # 當前環境預設使用同模型，視情況替換為更小模型
+
+
+# =========================
+# Tools Determination
+# =========================
+
+async def is_user_query_needs_tools(user_input: str, tool_result: str | None) -> bool:
+    """智能檢測工具是否返回所需數據，以輔助判斷是否需要工具。
+    Use the (small) LLM to classify whether this user query needs tools.
+    Returns True if tools are needed, False if not, or None on failure.
+    The model is asked to reply exactly YES or NO.
+    """
+    if not user_input:
+        return False
+    system = """
+    You are a strict logical auditor.
+    Determine if the Current Tool Result (if have) is sufficient to fully answer the 'User Question'.
+
+    Rules:
+    1. If the question is general and does not explicitly require specific data: output NO.
+    2. If the data contains the answer: Output NO.
+    3. If the data is not related to the question or missing key fields needed for the answer: Output YES.
+    4. If you are not sure if the data contains the answer, lean towards YES to allow tool usage.
+
+    Does it need MORE tool calls? Answer only YES or NO."""
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"User Question: {user_input}\n\nCurrent Tool Result: {tool_result}"},
+    ]
+
+    print(f"> [Debug] 判斷是否需要工具，問題: {user_input}, 工具結果: {tool_result}")
+    try:
+        resp = ollama.chat(
+            model=SMALL_MODEL,
+            messages=messages,
+            options={"temperature": 0.1},
+        )
+        if inspect.isawaitable(resp):
+            resp = await resp
+        resp = _normalize_chat_response(resp)
+        content = str(resp.get('message', {}).get('content', '')).strip().upper()
+        if content.startswith('Y'):
+            return True
+        if content.startswith('N'):
+            return False
+    except Exception:
+        return False
+    return False
+
 
 # =========================
 # Memory
@@ -53,7 +105,6 @@ def load_recent_memory_notes(path: Path, limit: int = SESSION_MEMORY_LIMIT) -> s
     if not session_lines:
         return ""
     return "\n".join(session_lines[-limit:])
-
 
 def append_memory_summary(path: Path, summary: str) -> None:
     summary = " ".join(summary.split()).strip()
@@ -100,13 +151,12 @@ def build_system_prompt() -> str:
     prompt = f"""\
 {soul}
 
-# Tool Usage Rules
-- When a tool is needed, call it with .json format.
-- Do not invent tool results.
-- Use an iterative think-observe-act loop: after a tool result, inspect it and decide whether another tool call is needed before answering.
-- If you already have enough information, answer directly.
-- If one tool already answers the user request, stop calling tools and answer from that result.
-- Prefer the smallest sufficient tool set; do not call unrelated tools.
+# Tool-Use Policy
+- Before every tool call, ask yourself: "Does this tool directly help solve the user's current question?"
+- If the answer is no, do not call a tool.
+- If the answer is yes, only call the most directly relevant tool.
+- Chain multiple tools only when each next tool is directly justified by the previous observation.
+- Always keep the user's original question as the target of the final answer; do not drift to unrelated data.
 """
 
     if recent_memory:
@@ -157,7 +207,7 @@ def _append_log(entry: dict) -> None:
 
 def log_llm_call(request: dict, response: Any = None, error: Any = None, start: float | None = None, end: float | None = None) -> None:
     entry: dict = {
-        "timestamp": datetime.now(),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "type": "llm",
         "request": request,
         "error": None,
@@ -188,7 +238,7 @@ def log_llm_call(request: dict, response: Any = None, error: Any = None, start: 
 
 def log_tool_call(tool_name: str, arguments: dict, result: Any = None, error: Any = None) -> None:
     entry: dict = {
-        "timestamp": datetime.now(),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "type": "tool",
         "tool_name": tool_name,
         "arguments": arguments,
@@ -329,16 +379,26 @@ def _build_dynamic_warning(
         return (
             "# Dynamic Execution Warnings\n"
             + "\n".join(warnings)
-            + "\n\nDo NOT call failed tools. Do NOT repeat the same tool with identical parameters."
+            + "\n\nBefore calling any tool, ask: does this tool directly help solve the user's current question? If not, do not call it. Do NOT call failed tools. Do NOT repeat the same tool with identical parameters."
         )
     return ""
 
 
 def _build_final_answer_prompt(tool_result_text: str) -> str:
     return (
-        "You already have the tool result. "
-        "Try to answer directly and only call another tools if necessary. "
-        f"Use this observation only: {tool_result_text}"
+        "# FINAL ANSWER MODE - RESPOND IN NATURAL LANGUAGE ONLY\n"
+        "==== IMPORTANT ====\n"
+        "You MUST respond with ONLY natural language text. There are NO tools available in this mode.\n"
+        "Do NOT output JSON, do NOT attempt to call tools, do NOT use any special formatting.\n"
+        "==== END INSTRUCTIONS ====\n\n"
+        f"Tool result obtained:\n{tool_result_text}\n\n"
+        "TASK: Analyze the above result and provide a DIRECT, NATURAL-LANGUAGE answer to the user's original question.\n"
+        "REQUIREMENTS:\n"
+        "- Response MUST be ONLY natural language\n"
+        "- MUST directly answer the user's question using the result above\n"
+        "- MUST NOT output JSON, code, or any structured format\n"
+        "- MUST NOT attempt to call any tools or functions\n"
+        "- Keep answer concise and relevant to the question"
     )
 
 
@@ -346,7 +406,7 @@ def _build_turn_summary(user_input: str, assistant_text: str, tool_text: str = "
     summary_source = assistant_text.strip() or tool_text.strip() or user_input.strip()
     summary_source = " ".join(summary_source.split())
     if len(summary_source) > 120:
-        summary_source = summary_source[:117] + "..."
+        summary_source = summary_source[:200] + "..."
     return summary_source
 
 
@@ -427,7 +487,7 @@ async def run_mcp_agent():
                     } for t in mcp_tools.tools]
 
                     _append_log({
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "type": "init",
                         "mcp_tools": ollama_tools,
                     })
@@ -436,8 +496,9 @@ async def run_mcp_agent():
                         print(">>>>>>> MCP Server:", len(mcp_tools.tools), "Tools successfully initialized. \n")
                         #print([t.name for t in mcp_tools.tools])
 
-                    # 提取可用工具名稱
+                    # 提取可用工具名稱和描述
                     available_tool_names = {t.name for t in mcp_tools.tools}
+                    tool_descriptions = {t.name: t.description for t in mcp_tools.tools}
 
                     # 2. 獲取memory與System Prompt
                     system_prompt = build_system_prompt()
@@ -466,7 +527,7 @@ async def run_mcp_agent():
                             break
                         except Exception as e:
                             print(f"> Error reading input: {e}")
-                            _append_log({"timestamp": datetime.now(), "type": "error", "error": f"input error: {e}"})
+                            _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": f"input error: {e}"})
                             break
 
                         input_eof_retries = 0
@@ -479,21 +540,60 @@ async def run_mcp_agent():
                         
                         user_message = {"role": "user", "content": user_input}
                         messages.append(user_message)
+                        # Quick heuristic: decide whether this user input needs tools
+                        needs_tools = await is_user_query_needs_tools(user_input, tool_result='')
+                        print(f"> [Debug] 需要工具: {needs_tools}")
+
+                        if not needs_tools:
+                            # Directly ask the model (no tools) for natural language answer
+                            final_messages = [
+                                {"role": "system", "content": build_system_prompt()},
+                                {"role": "user", "content": user_input},
+                            ]
+                            final_request = {"model": MODEL, "messages": final_messages}
+                            try:
+                                final_report = ollama.chat(
+                                    model=MODEL,
+                                    messages=final_messages,
+                                    options={"temperature": 0.7},
+                                )
+                                log_llm_call(final_request, response=final_report)
+                                if inspect.isawaitable(final_report):
+                                    final_report = await final_report
+                                final_report = _normalize_chat_response(final_report)
+                                final_text = str(final_report.get('message', {}).get('content', '')).strip()
+                                print_streaming(final_text)
+                                append_memory_summary(
+                                    MEMORY_PATH,
+                                    _build_turn_summary(
+                                        user_input=user_input,
+                                        assistant_text=final_text,
+                                    ),
+                                )
+                            except Exception as e:
+                                print(f"> 快速回答失敗，將進入工具流程: {e}")
+                                _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": str(e)})
+                            continue
                         
                         # 開始 ReAct 迴圈 
                         # 初始化本輪的執行歷史
-                        executed_tools: set[str] = set()
+                        executed_tool_calls: set[str] = set()  # 記錄「工具名+參數」組合，防止完全重複的調用
                         failed_tools: set[str] = set()
                         llm_failed = False
                         successful_tool_result_text = ""
+                        observation_available = False  # 當有工具結果可用時，下一輪引導模型直接回答
                         skip_final_answer = False
                 
                         for _ in range(MAX_TOOL_LOOPS):
                     
+                            # 如果已有觀察結果，立即進入最終答案生成階段
+                            if observation_available:
+                                break
+                    
                             # A. 執行階段：強制調用工具
                             # 構建傳給 LLM 的訊息，包含動態警告
                             messages_for_llm = _dedupe_consecutive_messages(messages)
-                            warning = _build_dynamic_warning(executed_tools, failed_tools, available_tool_names)
+                            warning = _build_dynamic_warning(executed_tool_calls, failed_tools, available_tool_names)
                             if warning:
                                 messages_for_llm.append({"role": "system", "content": warning})
 
@@ -506,13 +606,24 @@ async def run_mcp_agent():
                             }
                             start = time.perf_counter()
                             try:
-                                raw_response = ollama.chat(
-                                    model=MODEL,
-                                    messages=messages_for_llm,
-                                    tools=ollama_tools,
-                                    options={"temperature": 0.1},
-                                    format='json',
-                                )
+                                # 如果已有可觀察到的工具結果，禁用工具強制模型直接回答
+                                if observation_available:
+                                    messages_for_llm.append({"role": "system", "content": _build_final_answer_prompt(successful_tool_result_text)})
+                                    # 禁用工具，強制基於現有觀察直接回答
+                                    raw_response = ollama.chat(
+                                        model=MODEL,
+                                        messages=messages_for_llm,
+                                        options={"temperature": 0.1},
+                                    )
+                                else:
+                                    # 沒有觀察結果，保持工具啟用以允許鏈式調用
+                                    raw_response = ollama.chat(
+                                        model=MODEL,
+                                        messages=messages_for_llm,
+                                        tools=ollama_tools,
+                                        options={"temperature": 0.1},
+                                        format='json',
+                                    )
                                 if inspect.isawaitable(raw_response):
                                     raw_response = await raw_response
                                 end = time.perf_counter()
@@ -520,6 +631,7 @@ async def run_mcp_agent():
                                 log_llm_call(request_payload, response=raw_response, start=start, end=end)
                                 # Normalize response to a dict-like shape for downstream code
                                 response = _normalize_chat_response(raw_response)
+                                # observation_available 會在後續解析回應內容後（若無 tool_calls）被清除。
                             except Exception as e:
                                 end = time.perf_counter()
                                 log_llm_call(request_payload, response=None, error=e, start=start, end=end)
@@ -547,6 +659,8 @@ async def run_mcp_agent():
                             
                             if tool_calls: 
                                 last_tool_text = ""
+                                last_tool_name = ""  # Track last executed tool
+                                has_successful_execution = False
                                 for call in tool_calls: 
                                     tool_name = call['function']['name'] 
                                     tool_args = call['function']['arguments'] 
@@ -557,7 +671,7 @@ async def run_mcp_agent():
                                         print(f"> 工具不存在: {tool_name}")
                                         log_tool_call(tool_name, tool_args, result=tool_text, error="Tool does not exist")
                                         _append_tool_message(messages, call, tool_text)
-                                        executed_tools.add(f"{tool_name}(invalid)")
+                                        # 不記錄無效工具
                                         last_tool_text = tool_text
                                         continue
 
@@ -567,13 +681,23 @@ async def run_mcp_agent():
                                         print(f"> 跳過已失敗的工具: {tool_name}")
                                         log_tool_call(tool_name, tool_args, result=tool_text, error="Tool already failed")
                                         _append_tool_message(messages, call, tool_text)
-                                        executed_tools.add(f"{tool_name}(skip)")
+                                        # 不記錄已失敗的工具
                                         last_tool_text = tool_text
                                         continue
 
-                                    # 記錄執行
-                                    tool_key = f"{tool_name}"
-                                    executed_tools.add(tool_key)
+
+                                    # 檢查是否已用相同參數執行過此工具 (防止完全相同的調用)
+                                    tool_call_key = f"{tool_name}({json.dumps(tool_args, sort_keys=True)})"
+                                    if tool_call_key in executed_tool_calls:
+                                        tool_text = f"SKIP: Tool '{tool_name}' with identical arguments already executed. Do not repeat the exact same call."
+                                        print(f"> 跳過完全相同的工具調用: {tool_name}")
+                                        log_tool_call(tool_name, tool_args, result=tool_text, error="Identical tool call already executed")
+                                        _append_tool_message(messages, call, tool_text)
+                                        last_tool_text = tool_text
+                                        continue
+
+                                    # 記錄執行此工具呼叫組合
+                                    executed_tool_calls.add(tool_call_key)
                                     
                                     print(f"> 正在執行工具: {tool_name}...") 
                                     
@@ -609,6 +733,8 @@ async def run_mcp_agent():
                                         log_tool_call(tool_name, tool_args, result=result)
                                         if tool_text:
                                             print(f"> 工具結果: {tool_text}")
+                                        has_successful_execution = True
+                                        last_tool_name = tool_name  # Record which tool succeeded
                                     except asyncio.TimeoutError:
                                         tool_text = f"Tool execution timeout (60s): {tool_name}"
                                         print(f"> {tool_text}")
@@ -618,7 +744,7 @@ async def run_mcp_agent():
                                         tool_text = f"Tool execution failed due to broken MCP connection: {e}"
                                         log_tool_call(tool_name, tool_args, result=tool_text, error=e)
                                         failed_tools.add(tool_name)
-                                        print(f"> MCP 連接已斷裂，將重新連接...")
+                                        print(f"> MCP 連接已斷開，將重新連接...")
                                         raise  # Re-raise to trigger outer reconnection logic
                                     except Exception as e:
                                         tool_text = f"Tool execution failed: {type(e).__name__}: {e}"
@@ -628,8 +754,17 @@ async def run_mcp_agent():
                                     _append_tool_message(messages, call, tool_text)
                                     last_tool_text = tool_text
 
-                                successful_tool_result_text = last_tool_text
-                                break
+                                # 只有在執行擁有足夠資訊的工具時，才標記 observation 可用
+                                if has_successful_execution:
+                                    successful_tool_result_text = last_tool_text
+                                    print(f"> [Debug] 成功的工具結果: {successful_tool_result_text}")
+                                    # 智能判斷此工具數據是否需要下一輪工具調用
+                                    tool_needed = await is_user_query_needs_tools(user_input, successful_tool_result_text)
+                                    print(f"> [Debug] 需要工具: {tool_needed}")
+                                    if not tool_needed:
+                                        observation_available = True
+                                    else:
+                                        observation_available = False
                             
                             else: 
                                 direct_text = str(assistant_message.get('content', ''))
@@ -641,9 +776,14 @@ async def run_mcp_agent():
                                         assistant_text=direct_text,
                                     ),
                                 )
+                                # 已收到最終自然語言回答，清除 observation 標記
+                                observation_available = False
                                 break
                         else:
                             print("> Agent 已達工具呼叫上限，為避免無限迴圈而停止。")
+                            # 達到迴圈限制，強制進行最終答案生成（如果有成功的工具結果）
+                            if successful_tool_result_text:
+                                observation_available = True
 
                         if llm_failed:
                             # 回到使用者輸入循環，讓使用者修正模型設定或重試
@@ -661,15 +801,18 @@ async def run_mcp_agent():
                             continue
 
                         if successful_tool_result_text:
-                            final_messages = _dedupe_consecutive_messages(messages)
-                            final_messages.append({
-                                "role": "system",
-                                "content": _build_final_answer_prompt(successful_tool_result_text),
-                            })
+                            # 為最終答案生成構建乾淨的訊息歷史（移除工具相關內容，只保留用戶和最終觀察）
+                            final_messages = [
+                                {"role": "system", "content": build_system_prompt()},
+                                {"role": "user", "content": user_input},
+                                {
+                                    "role": "system",
+                                    "content": _build_final_answer_prompt(successful_tool_result_text),
+                                },
+                            ]
                             final_request = {
                                 "model": MODEL,
                                 "messages": final_messages,
-                                "tools": "disabled",
                             }
                             start_final = time.perf_counter()
                             try:
@@ -683,7 +826,12 @@ async def run_mcp_agent():
                                 end_final = time.perf_counter()
                                 log_llm_call(final_request, response=final_report, start=start_final, end=end_final)
                                 final_report = _normalize_chat_response(final_report)
-                                final_text = str(final_report.get('message', {}).get('content', ''))
+                                final_text = str(final_report.get('message', {}).get('content', '')).strip()
+                                
+                                # 如果模型仍然輸出JSON，使用工具結果代替
+                                if final_text.startswith('{') and final_text.endswith('}'):
+                                    final_text = successful_tool_result_text
+                                
                                 print_streaming(final_text)
                                 append_memory_summary(
                                     MEMORY_PATH,
@@ -710,7 +858,7 @@ async def run_mcp_agent():
         except anyio.BrokenResourceError as e:
             print("MCP connection broken, reconnecting in 2s...", e)
             try:
-                _append_log({"timestamp": datetime.now(), "type": "error", "error": str(e)})
+                _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": str(e)})
             except Exception:
                 pass
             await asyncio.sleep(2)
@@ -721,14 +869,39 @@ async def run_mcp_agent():
         except (asyncio.CancelledError, EOFError) as e:
             print(f"> Agent stopped: {type(e).__name__}")
             try:
-                _append_log({"timestamp": datetime.now(), "type": "error", "error": f"agent stop: {type(e).__name__}: {str(e)}"})
+                _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": f"agent stop: {type(e).__name__}: {str(e)}"})
             except Exception:
                 pass
             return
+        except ExceptionGroup as eg:
+            # 捕捉 TaskGroup 中未處理的多重例外，逐一記錄細節但讓 agent 繼續重啟循環
+            try:
+                print(f"> Agent encountered ExceptionGroup with {len(eg.exceptions)} sub-exception(s). Logging and continuing...")
+            except Exception:
+                print("> Agent encountered ExceptionGroup; logging and continuing...")
+            try:
+                details = []
+                for idx, sub in enumerate(eg.exceptions, start=1):
+                    tb = "".join(traceback.format_exception(type(sub), sub, getattr(sub, '__traceback__', None)))
+                    details.append({
+                        "index": idx,
+                        "type": type(sub).__name__,
+                        "error": str(sub),
+                        "traceback": tb,
+                    })
+                _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "exception_group", "count": len(eg.exceptions), "sub_exceptions": details})
+            except Exception as e2:
+                try:
+                    _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": f"failed logging ExceptionGroup: {e2}"})
+                except Exception:
+                    pass
+            # 等待並繼續外層重連循環
+            await asyncio.sleep(2)
+            continue
         except Exception as e:
             print(f"> Agent crashed: {type(e).__name__}: {e}")
             try:
-                _append_log({"timestamp": datetime.now(), "type": "error", "error": f"agent crash: {type(e).__name__}: {e}"})
+                _append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": f"agent crash: {type(e).__name__}: {e}"})
             except Exception:
                 pass
             return
@@ -736,7 +909,7 @@ async def run_mcp_agent():
                 
 if __name__ == "__main__":
     try:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # For Windows compatibility
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())  # type: ignore # For Windows compatibility
     except Exception as e:
         print(f"> Failed to set event loop policy: {e}")
     asyncio.run(run_mcp_agent())

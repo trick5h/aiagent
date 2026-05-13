@@ -1,4 +1,0 @@
-pip install fastmcp
-pip install anyio
-pip install pydantic
-pip install ollama
