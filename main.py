@@ -16,26 +16,79 @@ import traceback
 import warnings
 import subprocess
 import time
+from pydantic import BaseModel, validator
+import os
 
 # 隱藏所有過時警告
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 # =========================
-# Config
+# Config (loaded from config.json with pydantic validation)
 # =========================
 
-MODEL = "qwen2.5-coder:7b"
-SERVER_COMMAND = "python"          # or "python3"
-SERVER_PATH = Path("mcpServer/server.py")        # your FastMCP server
-SOUL_PATH = Path("SOUL.md")
-MEMORY_PATH = Path("MEMORY.md")
-MAX_TOOL_LOOPS = 8
-LOG_PATH = Path(__file__).resolve().parent / "logs.jsonl"
-SESSION_LOG_HEADER = "## Session Summary Log"
-SESSION_MEMORY_LIMIT = 5
-# 用於快速判斷是否為元問題的輕量分類器（可替換為更小的本地模型）
-SMALL_MODEL = MODEL  # 當前環境預設使用同模型，視情況替換為更小模型
+class AppConfig(BaseModel):
+    MODEL: str = "qwen2.5-coder:7b"
+    SMALL_MODEL: str | None = None
+    SERVER_COMMAND: str = "python"
+    SERVER_PATH: str = "mcpServer/server.py"
+    SOUL_PATH: str = "SOUL.md"
+    MEMORY_PATH: str = "MEMORY.md"
+    MAX_TOOL_LOOPS: int = 8
+    LOG_PATH: str | None = None
+    SESSION_LOG_HEADER: str = "## Session Summary Log"
+    SESSION_MEMORY_LIMIT: int = 5
+
+    @validator("SMALL_MODEL", pre=True, always=True)
+    def set_small_model_default(cls, v, values):
+        return v or values.get("MODEL")
+
+    @validator("LOG_PATH", pre=True, always=True)
+    def default_log_path(cls, v):
+        # default to same directory as this file
+        if v:
+            return v
+        return str(Path(__file__).resolve().parent / "logs.jsonl")
+
+
+def load_config(path: str | None = None) -> AppConfig:
+    """Load configuration from JSON file (default: ./config.json).
+
+    Relative paths in the config are interpreted relative to the config file.
+    """
+    cfg_path = Path(path or os.environ.get("AIAGENT_CONFIG", "config.json"))
+    data: dict = {}
+    if cfg_path.exists():
+        try:
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"> Failed to read config {cfg_path}: {e}")
+
+    # Normalize path fields to be strings (pydantic will validate)
+    # If relative, make them relative to config file directory
+    cfg_dir = cfg_path.parent if cfg_path.exists() else Path.cwd()
+    for key in ("SERVER_PATH", "SOUL_PATH", "MEMORY_PATH", "LOG_PATH"):
+        val = data.get(key)
+        if isinstance(val, str) and val:
+            p = Path(val)
+            data[key] = str(p if p.is_absolute() else (cfg_dir / p))
+
+    cfg = AppConfig(**data)
+    return cfg
+
+
+# Load config once and expose module-level constants (minimal changes to rest of code)
+_CFG = load_config()
+MODEL = _CFG.MODEL
+SMALL_MODEL = _CFG.SMALL_MODEL
+SERVER_COMMAND = _CFG.SERVER_COMMAND
+SERVER_PATH = Path(_CFG.SERVER_PATH)
+SOUL_PATH = Path(_CFG.SOUL_PATH)
+MEMORY_PATH = Path(_CFG.MEMORY_PATH)
+MAX_TOOL_LOOPS = int(_CFG.MAX_TOOL_LOOPS)
+LOG_PATH = Path(_CFG.LOG_PATH)
+SESSION_LOG_HEADER = _CFG.SESSION_LOG_HEADER
+SESSION_MEMORY_LIMIT = int(_CFG.SESSION_MEMORY_LIMIT)
 
 def start_ollama():
     try:

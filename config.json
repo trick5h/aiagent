@@ -1,0 +1,13 @@
+{
+  "MODEL": "qwen2.5-coder:7b",
+  "SMALL_MODEL": "qwen2.5-coder:7b",
+  "SERVER_COMMAND": "python",
+  "SERVER_PATH": "mcpServer/server.py",
+  "SOUL_PATH": "SOUL.md",
+  "MEMORY_PATH": "MEMORY.md",
+  "MAX_TOOL_LOOPS": 8,
+  "LOG_PATH": "logs.jsonl",
+  "SESSION_LOG_HEADER": "## Session Summary Log",
+  "SESSION_MEMORY_LIMIT": 5
+}
+
