@@ -1,4 +1,6 @@
 from server import mcp
+from pydantic import Field
+
 import pyodbc
 import json
 from decimal import Decimal
@@ -27,7 +29,7 @@ def sql_json_serializer(obj):
 
 
 @mcp.tool()
-def list_tables(name) -> str:
+def list_tables(name : str = Field(description="搜尋字串")) -> str:
     """如果不確定資料庫中的表名稱，用此搜尋資料庫中是否有相關名稱的資料表(sys.tables)。請傳入參數，以使用like '%{name}%' 比對。"""
     
     sql="""select name 
@@ -57,7 +59,7 @@ def list_tables(name) -> str:
     # 離開 with 區塊時，Python 會自動 close connection
 
 @mcp.tool()
-def get_table_schema(table_name) -> str:
+def get_table_schema(table_name : str = Field(description="資料表名稱")) -> str:
     """查詢指定資料表的欄位名稱與資料型態(INFORMATION_SCHEMA.COLUMNS)。"""
 
     sql="""select COLUMN_NAME, DATA_TYPE 
@@ -83,7 +85,7 @@ def get_table_schema(table_name) -> str:
                 return "資料表欄位如下: " + ", ".join(schema_info)
 
 @mcp.tool()
-def execute_sql(sql_query) -> str:
+def execute_sql(sql_query : str = Field(description="SQL 查詢語句")) -> str:
     """執行完整的 SQL 查詢，並回傳結果。請只執行所需的查詢以確保安全性與避免過多資料量。"""
 
     with pyodbc.connect(conn_str) as conn:

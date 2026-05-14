@@ -3,118 +3,69 @@ import os
 import urllib.request
 
 
-# 定義 RDL 存放目錄
-RDL_DIR = "D:/AiAgent/workspace"
+def search_online(
+    query: str,
+    limit: int = 10
+):
+    """注意：此工具只會回傳搜尋條件。"""
+    import json
+    import urllib.parse
+    import urllib.request
 
-def analyze_report_params(report_name: str) -> str:
-    """
-    讀取指定的 RDL 檔案並回傳它需要的參數清單。
-    例如輸入 'Sales_Monthly'，會回傳該報表需要的日期、地區等參數。
-    """
-    file_path = os.path.join(RDL_DIR, f"{report_name}.rdl")
-    if not os.path.exists(file_path):
-        return f"錯誤：找不到報表檔案 {report_name}"
+    search_result = ''
 
-    try:
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        # RDL 的 XML namespace 通常較複雜，這裡簡化處理
-        ns = {'rdl': 'http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition'}
-        
-        params = []
-        # 尋找 ReportParameters 節點
-        for param in root.findall(".//rdl:ReportParameter", ns):
-            p_name = param.get("Name")
-            p_type = param.find("rdl:DataType", ns).text if param.find("rdl:DataType", ns) is not None else "Unknown"
-            params.append(f"- {p_name} ({p_type})")
-        
-        if not params:
-            return f"報表 {report_name} 不需要任何參數。"
-        return f"報表 '{report_name}' 需要以下參數：\n" + "\n".join(params)
-    
-    except Exception as e:
-        return f"解析報表時出錯: {str(e)}"
+    # 1. 設定 DuckDuckGo 免金鑰 API 參數
+    # format=json: 要求回傳 JSON 格式
+    # no_redirect=1: 避免直接重導向到官網
+    params = {"q": query, "format": "json", "no_redirect": 1}
 
-
-def analyze_report_data(report_name: str) -> str:
-    """
-    解析指定 RDL 檔案中的 Dataset，回傳該報表包含的所有資料欄位名稱。
-    這有助於了解報表輸出的數據結構。
-    """
-    # 確保副檔名正確
-    if not report_name.endswith(".rdl"):
-        report_name += ".rdl"
-        
-    file_path = os.path.join(RDL_DIR, report_name)
-    
-    if not os.path.exists(file_path):
-        return f"錯誤：在路徑 {RDL_DIR} 找不到報表檔案 '{report_name}'。"
+    # 2. 組裝網址
+    encoded_params = urllib.parse.urlencode(params)
+    url = f"https://api.duckduckgo.com/?{encoded_params}"
 
     try:
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        
-        # RDL 使用 XML 命名空間，通常需要定義 ns 才能精準抓取
-        # 這裡涵蓋了常見的 RDL 命名空間版本
-        ns = {'rdl': 'http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition',
-              'rdl_old': 'http://schemas.microsoft.com/sqlserver/reporting/2008/01/reportdefinition'}
-        
-        report_structure = []
-        
-        # 尋找所有的 DataSets
-        # 注意：RDL 結構中 Field 節點通常在 DataSet > Fields > Field
-        datasets = root.findall(".//rdl:DataSet", ns) or root.findall(".//rdl_old:DataSet", ns)
-        
-        if not datasets:
-            return f"報表 '{report_name}' 中沒有偵測到任何 DataSets。"
+        # 4. 發送 HTTP GET 請求
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0"}
+        )  # 加上 User-Agent 模擬瀏覽器
 
-        for ds in datasets:
-            ds_name = ds.get("Name")
-            fields = []
-            # 抓取該 DataSet 下的所有 Field Name
-            field_nodes = ds.findall(".//rdl:Field", ns) or ds.findall(".//rdl_old:Field", ns)
-            for field in field_nodes:
-                fields.append(field.get("Name"))
-            
-            if fields:
-                report_structure.append(f"Dataset [{ds_name}] columns: {', '.join(fields)}")
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode("utf-8"))
+
+            # 5. 提取核心摘要
+            search_result += f"# {query}的定義: \n"
+            abstract = data.get("AbstractText")
+            if abstract:
+                search_result += f"{abstract}\n"
             else:
-                report_structure.append(f"Dataset [{ds_name}] has no columns defined.")
+                search_result += "查詢不到直接定義。\n"
+            search_result += f'## Websites: \n'
 
-        return f"--- 報表結構分析：{report_name} ---\n" + "\n".join(report_structure)
+            # 6. 提取相關結果列表（限定前 10 筆）
+            related_topics = data.get("RelatedTopics", [])
+
+            count = 0
+            websites={}
+            for item in related_topics:
+                if count >= limit:  # 嚴格限制最多 10 筆
+                    break
+
+                # 確保該項目是包含說明的字典（排除分類群組）
+                if "Text" in item and "FirstURL" in item:
+                    count += 1
+                    text = item.get("Text")
+                    link = item.get("FirstURL")
+                    websites[text] = link
+
+                if count == 0:
+                    print("沒有找到相關衍生結果。")
 
     except Exception as e:
-        return f"解析 RDL 時發生錯誤: {str(e)}"
+        print("請求發生錯誤：", e)
 
-def get_url_image(id: int):
-    
-    url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
+    return search_result + str(websites)
 
-    # 1. 定義路徑：當前資料夾 (os.getcwd()) 的 上一層 (..)
-    # 假設我們要存成 'result.jpg'
-    # 1. 取得 downloader.py 本身的絕對路徑
-    module_path = os.path.abspath(__file__) 
-
-    # 2. 取得該檔案所在的資料夾 (libs)
-    module_dir = os.path.dirname(module_path)
-
-    # 3. 取得該資料夾的上一層 (Project)
-    target_dir = os.path.abspath(os.path.join(module_dir, "../../workspace", "result.png"))
-
-    # 2. 直接下載
-
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-Agent', 'Mozilla/5.0')]
-    urllib.request.install_opener(opener)
-
-    urllib.request.urlretrieve(url, target_dir)
-
-
-    print(f"下載成功，檔案在：{target_dir}")
-
-#print(analyze_report_params("TestFleet"))
-#print(analyze_report_params("TestList"))
-#print(analyze_report_data("TestFleet"))
-#print(analyze_report_data("TestList"))
-
-get_url_image(544)
+import webbrowser
+url= "https://www.google.com"
+webbrowser.open(url.strip())
+print(f"已成功使用瀏覽器完成打開網址: {url}")
