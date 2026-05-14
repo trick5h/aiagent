@@ -1,84 +1,178 @@
-This README provides a professional overview of your AI Agent's architecture, specifically focusing on the integration between **OpenClaw**, **Python MCP**, and the **C# RDL Rendering Engine**.
+# Agentic Loop 技術原理
+
+使用 **Agentic Loop（代理人循環）** 架構，將 LLM 當成大腦，透過推理並調用不同工具。
+讓模型負責 **思考**，讓程式負責 **動作**：
+
+1. **輸入並判斷**：當模型接收到模糊的自然語言需求時，會先透過 **ReAct（Reason & Act）** 模式分析問題，判斷是否需要額外工具或資料。
+2. **使用工具**：模型會主動發出合適的 **Tool Calling**，例如查詢資料表結構、取得欄位資訊或檢查 SQL 語法。
+3. **結果整合輸出**：模型會根據工具回傳的結果，產生正確的回答。
+4. **循環修正**：若工具執行失敗或結果不合理，會再次進入思考，自動重新調用工具並修正內容。
+
+<br/>
+
 
 ---
 
-## README.md
+# Openclaw 架構
 
-# RDL Report AI Agent (MCP)
+ 
 
-This project implements an intelligent Report Management Agent using the **Model Context Protocol (MCP)**. It allows an AI (via OpenClaw) to analyze, parameterize, and execute local **SQL Server Reporting Services (SSRS) RDL files** to generate PDF reports.
+OpenClaw 流程
 
-## 🚀 Architecture Overview
-
-The system operates through a three-layer architecture:
-
-1. **LLM (Ollama):** Manages user intent and tool selection.
-2. **Bridge (Python MCP):** Acts as the brain, parsing RDL structures (XML) and managing logic.
-## 🛠️ Prerequisites & Packages
-
-### 1. Python Environment
-
-The Python layer handles the MCP protocol and XML parsing.
-
-* **Python 3.10+**
-* **Packages:**
-* `ollama`: Handling LLM input and responses.
-* `mcp`: Managing local connection to the MCP server.
-* `fastmcp`: High-level framework for building MCP servers.
-* `xml.etree.ElementTree`: (Built-in) For RDL structure analysis.
-
-
-
-```bash
-pip install mcp
-pip install fastmcp
-
-```
-
-
-
-### 2. System Requirements (Windows)
-
-* **SQL Server Types:** Required by the Report Viewer control for spatial data support.
-
-## 📂 Project Structure
+通常流程會像這樣：
 
 ```text
-├── main.py
-├── mcpServer/
-│   ├── server.py          # Python MCP entry point
-│   └── tools/             # Folder containing all available tools for the agent
-│       ├── system_tools.py 
-│       └── user_tools.py  
-├── agent/
-│   ├── mcp_client.py      # Connects to the Python MCP server
-│   └── prompt.py          # Generates prompts for the LLM based on templates
-├── workspace/             # Place for reports and temporary files
-├── MEMORY.py              # Stores long-term memory and logs
-└── SOUL.py                # Strict rules for decision-making and tool selection
-
+使用者問題
+    ↓
+Gateway
+    ↓
+組成 System Prompt (SOUL.md, SKILLS.md, TOOLS.md)
+    ↓
+傳給LLM 開始推理
+    ↓
+決定是否 Tool Calling
 ```
 
-## 🔧 Tool Definitions
-
-The agent exposes the following capabilities:
-
-| Tool | Input         | Description                                               |
-| --- |---------------|-----------------------------------------------------------|
-| `analyze_report_data` | `report_name` | Parses the RDL XML to list available DataSets. |
-| `get_url_image` | `id`          | Downloads the image.                                      |
+<br/>
 
 
-## 📝 Usage Example
+---   
 
-**User:** "Show me the structure of the SalesReport."
-**Agent:** (Calls `analyze_report_data`) "This report contains fields: OrderID, Customer, and TotalAmount."
+**Gateway**    
+可以把它想成「系統入口」。使用者的請求先進到 gateway，再由它負責做身分驗證、請求轉發、記錄 log、限流，然後把任務交給後面的 LLM / 工具層。
 
-**User:** "Great, download the image for Customer 'Gemini' and save it."
-**Agent:** (Calls `get_url_image`) "Success! Your image is ready at D:/workspace/result.png."
+**模型層**    
+負責理解自然語言以及輸出文字。
+
+**工具層**    
+把外部工具包成標準介面，讓模型用固定格式去拿資訊，例如：schema、table list、欄位說明、上網。
+
+<br/>
+
+
+---  
+
+| 模組                       | Openclaw           | 需要什麼                                         |
+| ------------------------ | ------------------------ | ----------------------------------------------- |
+| Gateway                  | 當作請求入口，負責驗證、路由、記錄、控流     | 可以接收使用者問題的輸入框 |
+| LLM  | 負責判斷任務、拆步驟、決定何時叫工具       | 本地跑ollama(免費，需要硬體) 或使用API(付費)   |
+| 工具執行               | 一個提供工具與執行工具的介面 | MCP Server    |
+| Prompt串接                  | 系統生成超長Prompt              | 透過記憶與文件組成固定Prompt                  |
+| Agentic Loop               | 決定整個流程的走向         | 混合模式控制: 用LLM判斷+程式碼迴圈          |
+     
+
+ <br/>    
+     
 
 ---
 
-## 🔒 Security Note
+# 目前流程舉例說明
+當使用者輸入：**「幫我下載圖片」**
 
-This agent is designed for local use.
+1.  **模型思考**：我需要透過工具來執行。
+2.  **進入循環**：模型進入思考，會不停循環直到解決問題。
+3.  **連線請求**：連接MCP Server，會把現有工具傳給LLM。
+4.  **執行工具**：LLM決定需要Tool Calling，輸出要執行的工具與參數。
+5.  **程式回傳**：MCP Server執行工具後並回傳結果，例: `下載 001.png 完成`。
+6.  **最終產出**：模型理解後，回答使用者 `我已替您下載好圖片`。
+
+<br/>
+
+---
+
+# Prompt Engineering 模組化
+- Markdown 文件本身，就是 Agent 的「外部記憶與規則庫」。
+- 把 Agent 的人格、能力、規則、流程，從程式碼裡拆出來，變成可維護的 Prompt 模組。
+
+一般對話：
+
+```text
+一個超長 prompt
+```
+
+Ai Agent：
+
+```text
+SOUL + SKILLS + TOOLS + 其他
+```
+
+這種文件的作用是：
+
+| 功能               | 說明              |
+| ---------------- | --------------- |
+| 統一 Agent 行為      | 避免每次 prompt 都重寫 |
+| 降低 hallucination | 明確規定不能亂猜        |
+| 提高穩定性            | 不同 session 行為一致 |
+| 方便維護             | 改文件即可調整 AI 行為   |
+
+<br/>
+
+---
+
+# MCP Server
+
+MCP（Model Context Protocol）是一種讓 LLM 能穩定調用外部工具的協定。
+
+它的核心目的，是將不同工具標準化，讓模型能用一致的方式進行呼叫與取得結果。
+
+主要功能包含：
+
+* **工具標準化**：統一輸入與輸出格式。
+* **降低耦合**：LLM 不需要知道工具底層實作。
+* **提高可靠性**：避免模型自由生成錯誤格式。
+* **方便擴充**：新增工具時不需要修改整體架構。
+
+
+## 簡單MCP範例
+
+模型會收到：
+
+```json
+{
+  "name": "get_weather",
+  "description": "取得城市天氣資訊",
+  "input_schema": {
+    "city": "string"
+  }
+}
+```
+
+這樣 LLM 就知道：
+
+* 工具叫什麼
+* 什麼時候該用
+* 要傳什麼參數
+* 回傳什麼結果
+
+---
+
+
+假設使用者問：台北天氣如何？
+
+Agent 推理後輸出：
+
+```json
+{
+  "tool": "get_weather",
+  "arguments": {
+    "city": "Taipei"
+  }
+}
+```
+
+然後程式去呼叫server：
+
+```http
+POST /tools/get_weather
+```
+
+取得：
+
+```json
+{
+  "result": "晴天 30°C"
+}
+```
+這個結果再被當成訊息傳入LLM，它就可以回答正確資訊給使用者。
+
+

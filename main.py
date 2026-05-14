@@ -400,7 +400,7 @@ async def run_mcp_agent():
                                 final_report = ollama.chat(
                                     model=config.MODEL,
                                     messages=final_messages,
-                                    options={"temperature": 0.7},
+                                    options={"temperature": 0.6},
                                 )
                                 if inspect.isawaitable(final_report):
                                     final_report = await final_report
