@@ -1,6 +1,6 @@
 {
-  "MODEL": "qwen2.5-coder:7b",
-  "SMALL_MODEL": "qwen2.5-coder:7b",
+  "MODEL": "qwen2.5-coder:7b-instruct",
+  "SMALL_MODEL": "qwen2.5-coder:7b-instruct",
   "SERVER_COMMAND": "python",
   "SERVER_PATH": "mcpServer/server.py",
   "SOUL_PATH": "SOUL.md",

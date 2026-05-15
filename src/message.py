@@ -24,9 +24,25 @@ def append_assistant_message(messages: list[dict[str, Any]], response: dict[str,
 
 
 def append_tool_message(messages: list[dict[str, Any]], tool_call: dict[str, Any], tool_text: str) -> None:
+    # Normalise tool call information into the conversation history so the LLM
+    # can see which tool was invoked, with what arguments, and what result it produced.
+    func = tool_call.get("function") or {}
+    tool_name = func.get("name") or tool_call.get("name") or "<unknown>"
+    tool_args = func.get("arguments") or tool_call.get("arguments") or {}
+
+    # Compose a readable content block that includes invocation metadata
+    try:
+        args_text = json.dumps(tool_args, ensure_ascii=False, indent=2)
+    except Exception:
+        args_text = str(tool_args)
+
+    content = f"[Tool: {tool_name}]\nArguments:\n{args_text}\n\nResult:\n{tool_text}"
+
     tool_message: dict[str, Any] = {
         "role": "tool",
-        "content": tool_text,
+        "content": content,
+        "name": tool_name,
+        "arguments": tool_args,
     }
 
     tool_call_id = tool_call.get("id")
