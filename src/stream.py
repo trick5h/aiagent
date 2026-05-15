@@ -2,7 +2,8 @@ import time
 import inspect
 import ollama
 
-from config import SMALL_MODEL
+from config import MEMORY_PATH, SMALL_MODEL
+from src.memory import load_recent_memory_notes
 from src.prompt import normalize_chat_response
 
 # =========================
@@ -22,19 +23,25 @@ async def is_user_query_needs_tools(user_input: str, tool_result: str | None) ->
     Determine if the Current Tool Result (if have) is sufficient to fully answer the 'User Question'.
 
     Rules:
-    1. If the question is general and does not explicitly require specific tool: output NO.
-    2. If the data or chat context contains the direct answer: Output NO.
+    1. If the question is general and does not require specific tool: Output NO.
+    2. If the tool result or chat context contains the direct answer: Output NO.
     3. If the data is not related to the question or missing key data needed for the answer: Output YES.
-    4. If the results only contain the fields name or running a query to know the exact data is needed: Output YES.
+    4. If the results only contain the fields name or running a query to know the exact data is needed: Output YES. (e.g., if the user asks for staff names but only the table schema is shown and no actual data exists, more tools should be called.)
     5. If the question is asking for a specific operation to be performed (e.g., open a URL, search for information): Output YES.
-    5. If you are not sure if the data contains the answer: Output YES.
+    6. If you are not sure if the data contains the answer: Always output YES.
 
     Does it need MORE tool calls? Answer only YES or NO."""
-
+    
     messages = [
         {"role": "system", "content": system},
-        {"role": "user", "content": f"User Question: {user_input}\n\nCurrent Tool Result: {tool_result}"},
+        {"role": "user", "content": f"User Question: {user_input}"},
+        {"role": "user", "content": f"Current Tool Result: {tool_result}"},
     ]
+
+    
+    recent_memory = load_recent_memory_notes(MEMORY_PATH)
+    if recent_memory:
+        messages.append({"role": "user", "content": f"\n# Recent Memory\n{recent_memory}\n"})
 
     print(f"> [Debug] 判斷是否需要工具，問題: {user_input}, 工具結果:({tool_result})")
     try:
@@ -52,8 +59,8 @@ async def is_user_query_needs_tools(user_input: str, tool_result: str | None) ->
         if content.startswith('N'):
             return False
     except Exception:
-        return False
-    return False
+        return True
+    return True
 
 
 # =========================

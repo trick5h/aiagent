@@ -1,5 +1,6 @@
 from server import mcp
 from pydantic import Field
+
 import xml.etree.ElementTree as ET
 import psutil
 import shutil
@@ -24,7 +25,7 @@ WORKSPACE_DIR = "D:/AiAgent/workspace"
 #======================================================
 
 @mcp.tool()
-def analyze_report_params(report_name: str) -> str:
+def analyze_report_params(report_name: str = Field(description=".rdl檔案名稱")) -> str:
     """
     讀取指定的 RDL 檔案並回傳它需要的參數清單。
     例如輸入 'Sales_Monthly'，會回傳該報表需要的日期、地區等參數。
@@ -55,7 +56,7 @@ def analyze_report_params(report_name: str) -> str:
         return f"解析報表時出錯: {str(e)}"
 
 @mcp.tool()
-def analyze_report_data(report_name: str) -> str:
+def analyze_report_data(report_name: str = Field(description=".rdl檔案名稱")) -> str:
     """
     解析指定 RDL 檔案中的 Dataset，回傳該報表包含的所有資料欄位名稱。
     這有助於了解報表輸出的數據結構。
@@ -106,7 +107,7 @@ def analyze_report_data(report_name: str) -> str:
         return f"解析 RDL 時發生錯誤: {str(e)}"
         
 @mcp.tool()
-def get_url_image(id: int):
+def get_url_image(id: int = Field(description="圖片ID")):
     try:
         url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
 
@@ -128,4 +129,12 @@ def get_url_image(id: int):
     except Exception as e:
         return f"下載失敗：{type(e).__name__}: {e}"
 
+@mcp.tool()
+def no_more_tools():
+    """如果你認為任務已經完成，執行這個來表示你不需要額外工具了。"""
+    return "全部執行完成，不需要額外工具。"
 
+@mcp.tool()
+def no_tools_available():
+    """如果你發現沒有任何工具可用，執行這個來表示找不到工具。"""
+    return "全部執行完成，沒有任何可用工具，不須再呼叫工具。"

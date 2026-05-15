@@ -82,7 +82,7 @@ def get_table_schema(table_name : str = Field(description="資料表名稱")) ->
                 return f"找不到資料表 {table_name} 的定義。"
             else:
                 schema_info = [f"{row[0]} ({row[1]})" for row in rows]
-                return "資料表欄位如下: " + ", ".join(schema_info)
+                return f"{table_name} 資料表欄位如下: " + ", ".join(schema_info)
 
 @mcp.tool()
 def execute_sql(sql_query : str = Field(description="SQL 查詢語句")) -> str:
@@ -109,8 +109,9 @@ def execute_sql(sql_query : str = Field(description="SQL 查詢語句")) -> str:
                 results = [dict(zip(columns, row)) for row in rows]
             
             # 轉換為 JSON 字串，並處理非 ASCII 字元 (如中文)
-            output = json.dumps(results, ensure_ascii=False, indent=None, default=sql_json_serializer)
-    
+            output = "執行完成。結果為: "
+            output += json.dumps(results, ensure_ascii=False, indent=None, default=sql_json_serializer)
+               
             # 硬性截斷防止溢位
             MAX_CHARS = 5000 
             if len(output) > MAX_CHARS:
