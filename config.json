@@ -5,6 +5,7 @@
   "SERVER_PATH": "mcpServer/server.py",
   "SOUL_PATH": "SOUL.md",
   "MEMORY_PATH": "MEMORY.md",
+  "WORKSPACE_DIR": "workspace/",
   "MAX_TOOL_LOOPS": 8,
   "LOG_PATH": "logs.jsonl",
   "SESSION_LOG_HEADER": "## Session Summary Log",

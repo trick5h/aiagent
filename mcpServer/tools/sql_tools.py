@@ -45,7 +45,7 @@ def list_tables(name : str = Field(description="搜尋字串")) -> str:
             try:
                 cursor.execute(sql, (f'%{name}%',))
             except Exception as e:
-                return f"資料庫執行錯誤: {str(e)}"
+                return f"請重試，資料庫執行錯誤: {str(e)}"
 
             # 回傳資料
             rows = cursor.fetchall()
@@ -74,7 +74,7 @@ def get_table_schema(table_name : str = Field(description="資料表名稱")) ->
             try:
                 cursor.execute(sql, (table_name,))
             except Exception as e:
-                return f"資料庫執行錯誤: {str(e)}"
+                return f"請重試，資料庫執行錯誤: {str(e)}"
             
             # 回傳資料
             rows = cursor.fetchall()
@@ -91,13 +91,13 @@ def execute_sql(sql_query : str = Field(description="SQL 查詢語句")) -> str:
     with pyodbc.connect(conn_str) as conn:
         with conn.cursor() as cursor:
             if not sql_query.strip().lower().startswith("select"):
-                return "目前僅允許執行 SELECT 查詢以確保安全性。"
+                return "請重試，目前僅允許執行 SELECT 查詢以確保安全性。"
             
             # 嘗試連線
             try:
                 cursor.execute(sql_query)
             except Exception as e:
-                return f"資料庫執行錯誤: {str(e)}"
+                return f"請重試，資料庫執行錯誤: {str(e)}"
             
             # 回傳資料
             columns = [column[0] for column in cursor.description]

@@ -14,6 +14,7 @@ class AppConfig(BaseModel):
     SERVER_PATH: str = "mcpServer/server.py"
     SOUL_PATH: str = "SOUL.md"
     MEMORY_PATH: str = "MEMORY.md"
+    WORKSPACE_DIR: str = "workspace/"
     MAX_TOOL_LOOPS: int = 8
     LOG_PATH: str  = "logs.jsonl"
     SESSION_LOG_HEADER: str = "## Session Summary Log"
@@ -33,7 +34,7 @@ class AppConfig(BaseModel):
 
 
 def load_config(path: str | None = None) -> AppConfig:
-    """Load configuration from JSON file (default: ./config.json).
+    """Load configuration from JSON file (default: config.json).
 
     Relative paths in the config are interpreted relative to the config file.
     """
@@ -48,7 +49,7 @@ def load_config(path: str | None = None) -> AppConfig:
     # Normalize path fields to be strings (pydantic will validate)
     # If relative, make them relative to config file directory
     cfg_dir = cfg_path.parent if cfg_path.exists() else Path.cwd()
-    for key in ("SERVER_PATH", "SOUL_PATH", "MEMORY_PATH", "LOG_PATH"):
+    for key in ("SERVER_PATH", "SOUL_PATH", "MEMORY_PATH", "LOG_PATH", "WORKSPACE_DIR"):
         val = data.get(key)
         if isinstance(val, str) and val:
             p = Path(val)
@@ -65,6 +66,7 @@ SERVER_COMMAND = CONFIG.SERVER_COMMAND
 SERVER_PATH = Path(CONFIG.SERVER_PATH)
 SOUL_PATH = Path(CONFIG.SOUL_PATH)
 MEMORY_PATH = Path(CONFIG.MEMORY_PATH)
+WORKSPACE_DIR = Path(CONFIG.WORKSPACE_DIR)
 MAX_TOOL_LOOPS = int(CONFIG.MAX_TOOL_LOOPS)
 LOG_PATH = Path(CONFIG.LOG_PATH)
 SESSION_LOG_HEADER = CONFIG.SESSION_LOG_HEADER

@@ -162,6 +162,7 @@ async def run_mcp_agent():
                         failed_tools: set[str] = set()
                         llm_failed = False
                         successful_tool_result_text = ""
+                        all_tool_results: list[str] = []  # 收集所有成功的工具執行結果
                         observation_available = False  # 當有工具結果可用時，下一輪引導模型直接回答
                         skip_final_answer = False
                 
@@ -338,6 +339,7 @@ async def run_mcp_agent():
                                 # 只有在執行擁有足夠資訊的工具時，才標記 observation 可用
                                 if has_successful_execution:
                                     successful_tool_result_text = last_tool_text
+                                    all_tool_results.append(last_tool_text)  # 將成功的工具結果加入列表
                                     print(f"> [Debug] 成功的工具結果: {successful_tool_result_text}")
                                     # 智能判斷此工具數據是否需要下一輪工具調用
                                     tool_needed = await is_user_query_needs_tools(user_input, successful_tool_result_text)
@@ -382,13 +384,14 @@ async def run_mcp_agent():
                             continue
 
                         if successful_tool_result_text:
-                            # 為最終答案生成構建乾淨的訊息歷史（移除工具相關內容，只保留用戶和最終觀察）
+                            # 為最終答案生成構建乾淨的訊息歷史（移除工具相關內容，只保留用戶和所有工具的觀察結果）
+                            combined_tool_results = "\n".join([f"[工具執行結果 {i+1}]\n{result}" for i, result in enumerate(all_tool_results)])
                             final_messages = [
                                 {"role": "system", "content": build_system_prompt()},
                                 {"role": "user", "content": user_input},
                                 {
                                     "role": "system",
-                                    "content": build_final_answer_prompt(successful_tool_result_text),
+                                    "content": build_final_answer_prompt(combined_tool_results),
                                 },
                             ]
                             final_request = {

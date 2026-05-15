@@ -5,13 +5,24 @@ import json
 import urllib.parse
 import urllib.request
 import webbrowser
+import os
+import sys
+
+project_root = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+import config
 
 @mcp.tool()
 def read_file(path: str = Field(description="檔案路徑")):
     """根據路徑讀取檔案內容。"""
+    if ':' not in path or path.startswith('/'):
+        path = os.path.join(config.WORKSPACE_DIR, path)
     with open(path, 'r', encoding='utf-8') as file:
         content = file.read()
-    return content
+    return f'"{path}" 的檔案內容:\n{content}'
 
 @mcp.tool()
 def set_volume(

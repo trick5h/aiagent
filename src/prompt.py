@@ -56,7 +56,7 @@ def build_final_answer_prompt(tool_result_text: str) -> str:
         "- MUST NOT output JSON, code, or any structured format\n"
         "- MUST NOT attempt to call any tools or functions\n"
         "- Keep answer concise and relevant to the question\n"
-        "- This result is not a single direct output, but the outcome of multiple repeated processing steps. Please do not assume it represents all available data."
+        "- This result is the outcome of multiple repeated processing steps. Please do not assume it represents all available data."
     )
 
 def normalize_chat_response(resp: Any) -> dict:

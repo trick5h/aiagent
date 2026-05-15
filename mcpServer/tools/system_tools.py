@@ -8,6 +8,10 @@ import os
 import urllib.request
 from datetime import datetime
 
+import config
+
+WORKSPACE_DIR = config.WORKSPACE_DIR
+
 @mcp.tool()
 def get_system_health() -> str:
     """查詢當前電腦的 CPU 使用率與磁碟剩餘空間。"""
@@ -21,7 +25,7 @@ def get_system_health() -> str:
 
 #======================================================
 # 定義 RDL 存放目錄
-WORKSPACE_DIR = "D:/AiAgent/workspace"
+WORKSPACE_DIR = config.WORKSPACE_DIR
 #======================================================
 
 @mcp.tool()
@@ -131,10 +135,10 @@ def get_url_image(id: int = Field(description="圖片ID")):
 
 @mcp.tool()
 def no_more_tools():
-    """如果你認為任務已經完成，執行這個來表示你不需要額外工具了。"""
+    """如果你認為全部任務已經完成，執行這個來表示你不需要額外工具了。"""
     return "全部執行完成，不需要額外工具。"
 
 @mcp.tool()
 def no_tools_available():
-    """如果你發現沒有任何工具可用，執行這個來表示找不到工具。"""
+    """如果你發現沒有任何與任務相關的工具可用，執行這個來表示找不到工具。"""
     return "全部執行完成，沒有任何可用工具，不須再呼叫工具。"
