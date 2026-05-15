@@ -6,6 +6,7 @@ pip install ollama
 ## MCP Server
 pip install fastmcp
 pip install mcp
+pip install uv
 
 ## SQL Tools
 pip install pyodbc

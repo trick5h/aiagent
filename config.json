@@ -2,7 +2,12 @@
   "MODEL": "qwen2.5-coder:7b-instruct",
   "SMALL_MODEL": "qwen2.5-coder:7b-instruct",
   "SERVER_COMMAND": "python",
-  "SERVER_PATH": "mcpServer/server.py",
+  "SERVERS": {
+    "my_team_server": {
+      "command": "python",
+      "args": ["d:\\AiAgent\\mcpServer\\server.py"]
+    }
+  },
   "SOUL_PATH": "SOUL.md",
   "MEMORY_PATH": "MEMORY.md",
   "WORKSPACE_DIR": "workspace/",
