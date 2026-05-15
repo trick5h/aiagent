@@ -210,3 +210,12 @@ POST /tools/get_weather
 這個結果再被當成訊息傳入LLM，它就可以回答正確資訊給使用者。
 
 
+----
+#### 測試:
+替我查staff表裡前五名的員工姓名    
+下載編號544的圖片    
+你是什麼模型?    
+搜尋告訴我ai是什麼    
+瀏覽器前往google.com    
+TestFleet報告需要哪些參數?    
+幫我查person表中first name是john的人
