@@ -46,7 +46,7 @@ def start_ollama():
 
 
 async def run_mcp_agent(): 
-    # B. 建立連線 (auto-reconnect on broken resource)
+    # A. 建立連線 (auto-reconnect on broken resource)
     while True:
         try:
             async with connect_all_mcp_servers() as mcp_bundle:
@@ -97,7 +97,8 @@ async def run_mcp_agent():
                     user_message = {"role": "user", "content": "It's" + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "now. " + user_input}
                     messages.append(user_message)
                     # Quick heuristic: decide whether this user input needs tools
-                    needs_tools = await is_user_query_needs_tools(user_input, tool_result='')
+                    #needs_tools = await is_user_query_needs_tools(user_input, tool_result='') # Warning: It's not accurate enough
+                    needs_tools = True
                     print(f"> [Debug] 需要工具: {needs_tools}")
 
                     if not needs_tools:
@@ -324,8 +325,12 @@ async def run_mcp_agent():
                                 successful_tool_result_text = last_tool_text
                                 all_tool_results.append(last_tool_text)  # 將成功的工具結果加入列表
                                 print(f"> [Debug] 成功的工具結果: {successful_tool_result_text}")
-                                # 智能判斷此工具數據是否需要下一輪工具調用
-                                tool_needed = await is_user_query_needs_tools(user_input, successful_tool_result_text)
+                                # 判斷此工具數據是否需要下一輪工具調用
+                                #tool_needed = await is_user_query_needs_tools(user_input, successful_tool_result_text) # Warning: It's not accurate enough
+                                if "全部執行完成" in successful_tool_result_text or "不須再呼叫工具" in successful_tool_result_text:
+                                    tool_needed = False
+                                else:
+                                    tool_needed = True
                                 print(f"> [Debug] 需要工具: {tool_needed}")
                                 if not tool_needed:
                                     observation_available = True

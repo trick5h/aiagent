@@ -10,3 +10,6 @@ pip install uv
 
 ## SQL Tools
 pip install pyodbc
+
+## Optional
+pip install ddgs

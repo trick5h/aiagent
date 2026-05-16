@@ -215,7 +215,7 @@ POST /tools/get_weather
 替我查staff表裡前五名的員工姓名    
 下載編號544的圖片    
 你是什麼模型?    
-搜尋告訴我ai是什麼    
+上網搜尋python並開啟瀏覽器前往他的官方網站    
 瀏覽器前往google.com    
 TestFleet報告需要哪些參數?    
 幫我查person表中first name是john的人

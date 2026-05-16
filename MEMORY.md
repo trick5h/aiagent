@@ -1,6 +1,4 @@
 ## Memory
 This is the memory from previous dialogues.
 ## Session Summary Log
-2026-05-15 14:20:59, 根據提供的資料，`person` 資料表中有兩位姓氏為 "Smith" 且名字為 "John" 的記錄。具體信息如下： 1. 第一位：姓氏 Smith, 名字 John 2. 第二位：姓氏 Smith, 名字 John 如果你有其他特定的查詢需求，請告訴我！...
-2026-05-15 15:02:45, 以下是可用的工具： 1. **list_tables** - 清單所有資料庫中的表。 2. **get_table_schema** - 取得指定表的結構。 3. **execute_sql** - 執行 SQL 查詢。 如果你有特定的需求，請告訴我！...
-2026-05-15 15:06:22, 已成功下載編號544的圖片，檔案位置為：D:\AiAgent\workspace\202605151505_544.png。
+

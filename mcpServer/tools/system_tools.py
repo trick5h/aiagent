@@ -136,7 +136,7 @@ def get_url_image(id: int = Field(description="圖片ID")):
 @mcp.tool()
 def no_more_tools():
     """如果你認為全部任務已經完成，執行這個來表示你不需要額外工具了。"""
-    return "全部執行完成，不需要額外工具。"
+    return "全部執行完成，不須再呼叫工具。"
 
 @mcp.tool()
 def no_tools_available():
