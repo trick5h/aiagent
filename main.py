@@ -94,43 +94,12 @@ async def run_mcp_agent():
                     if user_input.strip().lower() == "exit":
                         return
 
-                    user_message = {"role": "user", "content": "It's" + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "now. " + user_input}
+                    user_message = {"role": "user", "content": "It's " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " now. " + user_input}
                     messages.append(user_message)
                     # Quick heuristic: decide whether this user input needs tools
                     #needs_tools = await is_user_query_needs_tools(user_input, tool_result='') # Warning: It's not accurate enough
                     needs_tools = True
-                    print(f"> [Debug] 需要工具: {needs_tools}")
 
-                    if not needs_tools:
-                        # Directly ask the model (no tools) for natural language answer
-                        final_messages = [
-                            {"role": "system", "content": build_system_prompt()},
-                            {"role": "user", "content": user_input},
-                        ]
-                        final_request = {"model": config.MODEL, "messages": final_messages}
-                        try:
-                            final_report = ollama.chat(
-                                model=config.MODEL,
-                                messages=final_messages,
-                                options={"temperature": 0.7},
-                            )
-                            log_llm_call(final_request, response=final_report)
-                            if inspect.isawaitable(final_report):
-                                final_report = await final_report
-                            final_report = normalize_chat_response(final_report)
-                            final_text = str(final_report.get('message', {}).get('content', '')).strip()
-                            print_streaming(final_text)
-                            append_memory_summary(
-                                MEMORY_PATH,
-                                build_turn_summary(
-                                    user_input=user_input,
-                                    assistant_text=final_text,
-                                ),
-                            )
-                        except Exception as e:
-                            print(f"> 快速回答失敗，將進入工具流程: {e}")
-                            append_log({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "type": "error", "error": str(e)})
-                        continue
                     # 開始 ReAct 迴圈 
                     # 初始化本輪的執行歷史
                     executed_tool_calls: set[str] = set()  # 記錄「工具名+參數」組合，防止完全重複的調用
@@ -139,13 +108,8 @@ async def run_mcp_agent():
                     successful_tool_result_text = ""
                     all_tool_results: list[str] = []  # 收集所有成功的工具執行結果
                     observation_available = False  # 當有工具結果可用時，下一輪引導模型直接回答
-                    skip_final_answer = False
 
                     for _ in range(config.MAX_TOOL_LOOPS):
-
-                        # 如果已有觀察結果，立即進入最終答案生成階段
-                        if observation_available:
-                            break
 
                         # A. 執行階段：強制調用工具
                         # 構建傳給 LLM 的訊息，包含動態警告
@@ -167,11 +131,11 @@ async def run_mcp_agent():
                             if observation_available:
                                 messages_for_llm.append({"role": "system", "content": build_final_answer_prompt(successful_tool_result_text)})
                                 # 禁用工具，強制基於現有觀察直接回答
-                                raw_response = ollama.chat(
+                                final_report = ollama.chat(
                                     model=config.MODEL,
                                     messages=messages_for_llm,
-                                    options={"temperature": 0.1},
                                 )
+                                break
                             else:
                                 # 沒有觀察結果，保持工具啟用以允許鏈式調用
                                 raw_response = ollama.chat(
@@ -353,14 +317,51 @@ async def run_mcp_agent():
                     else:
                         print("> Agent 已達工具呼叫上限，為避免無限迴圈而停止。")
                         # 達到迴圈限制，強制進行最終答案生成（如果有成功的工具結果）
-                        if successful_tool_result_text:
-                            observation_available = True
+                        messages_for_llm.append({"role": "system", "content": build_final_answer_prompt(successful_tool_result_text)})
+                        # 禁用工具，強制基於現有觀察直接回答
+                        final_report = ollama.chat(
+                            model=config.MODEL,
+                            messages=messages_for_llm,
+                        )
 
                     if llm_failed:
                         # 回到使用者輸入循環，讓使用者修正模型設定或重試
                         continue
 
-                    if skip_final_answer:
+                    
+                    # 為最終答案生成構建乾淨的訊息歷史（移除工具相關內容，只保留用戶和所有工具的觀察結果）
+                    combined_tool_results = "\n".join([f"[工具執行結果 {i+1}]\n{result}" for i, result in enumerate(all_tool_results)])
+                    final_request = {
+                        "model": config.MODEL,
+                        "messages": messages_for_llm,
+                    }
+                    start_final = time.perf_counter()
+                    try:
+                        if inspect.isawaitable(final_report):
+                            final_report = await final_report
+                        end_final = time.perf_counter()
+                        log_llm_call(final_request, response=final_report, start=start_final, end=end_final)
+                        final_report = normalize_chat_response(final_report)
+                        final_text = str(final_report.get('message', {}).get('content', '')).strip()
+
+                        # 如果模型仍然輸出JSON，使用工具結果代替
+                        if final_text.startswith('{') and final_text.endswith('}'):
+                            final_text = successful_tool_result_text
+
+                        print_streaming(final_text)
+                        append_memory_summary(
+                            MEMORY_PATH,
+                            build_turn_summary(
+                                user_input=user_input,
+                                assistant_text=final_text,
+                                tool_text=successful_tool_result_text,
+                            ),
+                        )
+                    except Exception as e:
+                        end_final = time.perf_counter()
+                        log_llm_call(final_request, response=None, error=e, start=start_final, end=end_final)
+                        print(f"> 最終回答生成失敗: {type(e).__name__}: {e}")
+                        print_streaming(successful_tool_result_text)
                         append_memory_summary(
                             MEMORY_PATH,
                             build_turn_summary(
@@ -369,64 +370,7 @@ async def run_mcp_agent():
                                 tool_text=successful_tool_result_text,
                             ),
                         )
-                        continue
-
-                    if successful_tool_result_text:
-                        # 為最終答案生成構建乾淨的訊息歷史（移除工具相關內容，只保留用戶和所有工具的觀察結果）
-                        combined_tool_results = "\n".join([f"[工具執行結果 {i+1}]\n{result}" for i, result in enumerate(all_tool_results)])
-                        final_messages = [
-                            {"role": "system", "content": build_system_prompt()},
-                            {"role": "user", "content": user_input},
-                            {
-                                "role": "system",
-                                "content": build_final_answer_prompt(combined_tool_results),
-                            },
-                        ]
-                        final_request = {
-                            "model": config.MODEL,
-                            "messages": final_messages,
-                        }
-                        start_final = time.perf_counter()
-                        try:
-                            final_report = ollama.chat(
-                                model=config.MODEL,
-                                messages=final_messages,
-                                options={"temperature": 0.6},
-                            )
-                            if inspect.isawaitable(final_report):
-                                final_report = await final_report
-                            end_final = time.perf_counter()
-                            log_llm_call(final_request, response=final_report, start=start_final, end=end_final)
-                            final_report = normalize_chat_response(final_report)
-                            final_text = str(final_report.get('message', {}).get('content', '')).strip()
-
-                            # 如果模型仍然輸出JSON，使用工具結果代替
-                            if final_text.startswith('{') and final_text.endswith('}'):
-                                final_text = successful_tool_result_text
-
-                            print_streaming(final_text)
-                            append_memory_summary(
-                                MEMORY_PATH,
-                                build_turn_summary(
-                                    user_input=user_input,
-                                    assistant_text=final_text,
-                                    tool_text=successful_tool_result_text,
-                                ),
-                            )
-                        except Exception as e:
-                            end_final = time.perf_counter()
-                            log_llm_call(final_request, response=None, error=e, start=start_final, end=end_final)
-                            print(f"> 最終回答生成失敗: {type(e).__name__}: {e}")
-                            print_streaming(successful_tool_result_text)
-                            append_memory_summary(
-                                MEMORY_PATH,
-                                build_turn_summary(
-                                    user_input=user_input,
-                                    assistant_text=successful_tool_result_text,
-                                    tool_text=successful_tool_result_text,
-                                ),
-                            )
-                        continue
+                    continue
         except anyio.BrokenResourceError as e:
             print("MCP connection broken, reconnecting in 2s...", e)
             try:
