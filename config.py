@@ -25,7 +25,12 @@ class AppConfig(BaseModel):
         "my_team_server": StdioServerParameters(
             command="python", args=[r"d:\AiAgent\mcpServer\server.py"]
         ),
-        # 可以在這邊追加多個別人寫好的 MCP 伺服器...
+        #"playwright_server": {
+        #    "command": "npx",
+        #   "args": ["-y", "@playwright/mcp@latest"],
+        #    "cwd": "C:\\Users\\HankLin\\AppData\\Local\\ms-playwright"
+        #}
+        # 追加別人寫好的 MCP 伺服器...
         #"official_fetch": StdioServerParameters(
         #    command="uvx", args=["mcp-server-brave-search"]
         #),       

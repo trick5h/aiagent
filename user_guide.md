@@ -216,6 +216,6 @@ POST /tools/get_weather
 下載編號544的圖片    
 你是什麼模型?    
 上網搜尋python並開啟瀏覽器前往他的官方網站    
-瀏覽器前往google.com    
+打開google.com    
 TestFleet報告需要哪些參數?    
 幫我查person表中first name是john的人

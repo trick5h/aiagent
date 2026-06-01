@@ -2,6 +2,7 @@
 pip install anyio
 pip install pydantic
 pip install ollama
+pip install langgraph
 
 ## MCP Server
 pip install fastmcp

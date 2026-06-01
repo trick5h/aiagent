@@ -52,7 +52,7 @@ def build_final_answer_prompt(tool_result_text: str) -> str:
         "TASK: Analyze the above result and provide a DIRECT, NATURAL-LANGUAGE answer to the user's original question. Provide a summary if a tool was executed.\n"
         "REQUIREMENTS:\n"
         "- Response MUST be ONLY natural language\n"
-        "- MUST directly answer the user's question using the result above, do not make up things that are not in the result\n"
+        "- MUST directly answer the user's question using the tool results, do not make up things that are not in the result\n"
         "- MUST NOT output JSON, code, or any structured format\n"
         "- MUST NOT attempt to call any tools or functions\n"
         "- Keep answer concise and relevant to the question\n"

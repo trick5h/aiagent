@@ -286,15 +286,18 @@ async def run_mcp_agent():
 
                             # 只有在執行擁有足夠資訊的工具時，才標記 observation 可用
                             if has_successful_execution:
-                                successful_tool_result_text = last_tool_text
+                                if "全部執行完成" in last_tool_text or "不須再呼叫工具" in last_tool_text:
+                                    tool_needed = False
+                                else:
+                                    tool_needed = True                                  
+                                    successful_tool_result_text = last_tool_text
+
                                 all_tool_results.append(last_tool_text)  # 將成功的工具結果加入列表
                                 print(f"> [Debug] 成功的工具結果: {successful_tool_result_text}")
                                 # 判斷此工具數據是否需要下一輪工具調用
                                 #tool_needed = await is_user_query_needs_tools(user_input, successful_tool_result_text) # Warning: It's not accurate enough
-                                if "全部執行完成" in successful_tool_result_text or "不須再呼叫工具" in successful_tool_result_text:
-                                    tool_needed = False
-                                else:
-                                    tool_needed = True
+                                
+                                
                                 print(f"> [Debug] 需要工具: {tool_needed}")
                                 if not tool_needed:
                                     observation_available = True

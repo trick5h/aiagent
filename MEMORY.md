@@ -1,5 +1,12 @@
 ## Memory
 This is the memory from previous dialogues.
 ## Session Summary Log
-2026-05-16 11:36:15, 我是 MS SQL Server Data Agent，一個專門用于分析和處理 SQL Server 資料的模型。目前已經完成了所有必要的作業並得到了最終結果。如果您有任何問題或需要進一步分析，请隨時告訴我！
-2026-05-16 11:43:21, 目前時間是11:41。您上次問我的問題是約5分鐘前。
+2026-05-19 14:53:59, {"name": "no_more_tools", "arguments": {}}
+2026-05-19 14:57:56, {"name": "no_tools_available", "arguments": {}}
+2026-05-19 15:01:55, {"name": "no_more_tools", "arguments": {}}
+2026-05-19 15:02:03, {"name": "no_more_tools", "arguments": {}}
+2026-05-19 15:06:51, {"name": "no_more_tools", "arguments": {}}
+2026-05-19 15:13:04, Ollama client not available. Set DISABLE_OLLAMA=0 and install the ollama Python client to enable model calls.
+2026-05-19 15:14:19, Ollama client not available. Set DISABLE_OLLAMA=0 and install the ollama Python client to enable model calls.
+2026-05-19 15:49:22, { "response": "我是一個由 MS SQL Server Data Agent 管理的資料專家，專門處理與 MS SQL Server 相關的數據操作和分析任務。" }
+2026-05-29 18:49:41, 圖片已經下載至 D:\AiAgent\workspace\202605291848_544.png。請檢查該路徑以確認圖片。

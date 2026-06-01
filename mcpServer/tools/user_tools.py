@@ -32,7 +32,7 @@ def set_volume(
 ):
     """這是測試調整音量大小。"""
     return level
-
+'''
 @mcp.tool()
 def search_online(
     query: str = Field(description="搜尋關鍵字"),
@@ -69,3 +69,4 @@ def open_url(url: str = Field(description="網址")):
     webbrowser.open(url.strip())
     
     return f"已成功使用瀏覽器完成打開網址: {url}"
+'''

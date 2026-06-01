@@ -75,8 +75,8 @@ async def connect_all_mcp_servers():
             except Exception as e:
                 print(f"連線到伺服器 {server_name} 失敗: {e}")
 
-        async with asyncio.TaskGroup() as tg:
-            for name, params in SERVERS.items():
-                tg.create_task(connect_server(name, params))
+        # 逐一連線各 MCP 伺服器，避免在不同 task 中進出同一個 AsyncExitStack
+        for name, params in SERVERS.items():
+            await connect_server(name, params)
 
         yield bundle
