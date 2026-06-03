@@ -13,6 +13,7 @@ class AppConfig(BaseModel):
     # Default 值可以在這裡設定，也可以在 config.json 中覆蓋
     MODEL: str = "qwen2.5-coder:7b"
     SMALL_MODEL: str = MODEL
+    OLLAMA_HOST: str = ""
     SERVER_COMMAND: str = "python"
     SOUL_PATH: str = "SOUL.md"
     MEMORY_PATH: str = "MEMORY.md"
@@ -100,12 +101,17 @@ def load_config(path: str | None = None) -> AppConfig:
             data[key] = str(p if p.is_absolute() else (cfg_dir / p))
 
     cfg = AppConfig(**data)
+    if cfg.OLLAMA_HOST:
+        os.environ["OLLAMA_HOST"] = cfg.OLLAMA_HOST
+    else:
+        os.environ.pop("OLLAMA_HOST", None)
     return cfg
 
 # Load config once and expose module-level constants
 CONFIG = load_config()
 MODEL = CONFIG.MODEL
 SMALL_MODEL = CONFIG.SMALL_MODEL
+OLLAMA_HOST = CONFIG.OLLAMA_HOST
 SERVER_COMMAND = CONFIG.SERVER_COMMAND
 SERVERS = CONFIG.SERVERS
 SOUL_PATH = Path(CONFIG.SOUL_PATH)

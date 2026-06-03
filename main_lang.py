@@ -9,11 +9,11 @@ import warnings
 from typing import Any, Literal, TypedDict
 
 import anyio
-import ollama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, StateGraph
 
 import config
+import ollama
 from src.client import connect_all_mcp_servers
 from src.logger import append_log, log_llm_call, log_tool_call, tool_result_to_text
 from src.message import (
@@ -22,7 +22,7 @@ from src.message import (
     build_dynamic_warning,
     build_turn_summary,
     dedupe_consecutive_messages,
-    extract_tool_call_from_content,
+    normalize_tool_calls,
 )
 from src.memory import append_memory_summary
 from src.prompt import build_final_answer_prompt, build_system_prompt, normalize_chat_response
@@ -42,6 +42,12 @@ def start_ollama():
                
     except FileNotFoundError:
         print("錯誤：找不到 ollama 指令。請確認已安裝 Ollama 並已加入系統環境變數 (PATH)。")
+
+
+def _get_normalized_tool_calls(message: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not message:
+        return []
+    return normalize_tool_calls(message.get("tool_calls"))
 
 async def run_agent():
     while True:
@@ -189,14 +195,7 @@ async def run_agent():
                     if model_thought:
                         print(f"> 模型思考: {model_thought}")
 
-                    tool_calls = response.get("message", {}).get("tool_calls", [])
-                    if not tool_calls:
-                        content = assistant_message.get("content")
-                        parsed_tool_call = extract_tool_call_from_content(content)
-                        if parsed_tool_call is not None:
-                            tool_calls = [parsed_tool_call]
-                            assistant_message["tool_calls"] = tool_calls
-                            messages[-1] = assistant_message
+                    tool_calls = _get_normalized_tool_calls(assistant_message)
 
                     update: dict[str, Any] = {"messages": messages}
                     if tool_calls:
@@ -209,7 +208,7 @@ async def run_agent():
                 async def tool_node(state: State):
                     messages = list(state.get("messages", []))
                     last_message = messages[-1]
-                    tool_calls = last_message.get("tool_calls", [])
+                    tool_calls = _get_normalized_tool_calls(last_message)
                     print(f"> 模型回覆解析後的工具呼叫: {tool_calls}")
 
                     executed_tool_calls = set(state.get("executed_tool_calls", set()))
@@ -314,7 +313,7 @@ async def run_agent():
 
                     observation_available = False
                     if has_successful_execution:
-                        if "全部執行完成" in last_tool_text or "不須再呼叫工具" in last_tool_text:
+                        if "All tasks completed;" in last_tool_text or "no further tools required." in last_tool_text:
                             tool_needed = False
                         else:
                             tool_needed = True
@@ -347,7 +346,7 @@ async def run_agent():
                     if state.get("turn_iterations", 0) >= config.MAX_TOOL_LOOPS:
                         return "__end__"
 
-                    tool_calls = messages[-1].get("tool_calls", [])
+                    tool_calls = normalize_tool_calls(messages[-1].get("tool_calls"))
                     if not tool_calls:
                         return "__end__"
 

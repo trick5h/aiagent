@@ -33,6 +33,29 @@ def build_system_prompt() -> str:
 - If the answer is yes, only call the most directly relevant tool.
 - Chain multiple tools only when each next tool is directly justified by the previous observation.
 - Always keep the user's original question as the target of the final answer; do not drift to unrelated data.
+
+# Standard Tool Call Format
+- When you need to call a tool, respond with exactly one JSON object and no extra text.
+- Use the OpenAI-style tool call shape below as the only allowed format:
+    {{
+        "tool_calls": [
+            {{
+                "id": "call_1",
+                "type": "function",
+                "function": {{
+                    "name": "tool_name",
+                    "arguments": {{
+                        "key": "value"
+                    }}
+                }}
+            }}
+        ]
+    }}
+- If no tool is needed, do not output tool_calls.
+- Never use alternative shapes such as {{"function": "...", "parameters": {{...}}}} or {{"name": "...", "arguments": {{...}}}}.
+- Keep arguments as a JSON object, not a string.
+- If multiple tools are required, return multiple entries in the tool_calls array, ordered by execution priority.
+- When the task is complete, answer in natural language only.
 """
 
     if recent_memory:

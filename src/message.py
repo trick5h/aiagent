@@ -7,6 +7,95 @@ from typing import Any
 # =========================
 # Build dynamic warning messages about tool execution history and availability, and to append assistant/tool messages to the conversation.
 
+
+def _normalize_arguments(arguments: Any) -> dict[str, Any]:
+    if isinstance(arguments, dict):
+        return arguments
+    if isinstance(arguments, str):
+        text = arguments.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+        return {}
+    return {}
+
+
+def normalize_tool_call(candidate: Any) -> dict[str, Any] | None:
+    """Normalize a single tool-call-like object into the internal OpenAI-style shape.
+
+    Accepted input forms include:
+    - {"id": "...", "type": "function", "function": {"name": "tool", "arguments": {...}}}
+    - {"name": "tool", "arguments": {...}}
+    - {"function": "tool", "parameters": {...}}
+    - {"function": {"name": "tool", "arguments": {...}}}
+    - {"tool": "tool", "parameters": {...}}
+    """
+    if not isinstance(candidate, dict):
+        return None
+
+    tool_name = candidate.get("name") or candidate.get("tool_name") or candidate.get("tool")
+    arguments: dict[str, Any] = _normalize_arguments(candidate.get("arguments"))
+
+    function_field = candidate.get("function")
+    if isinstance(function_field, str):
+        tool_name = tool_name or function_field
+    elif isinstance(function_field, dict):
+        tool_name = tool_name or function_field.get("name") or function_field.get("function")
+        function_arguments = _normalize_arguments(function_field.get("arguments"))
+        if function_arguments:
+            arguments = function_arguments
+        else:
+            parameters = _normalize_arguments(function_field.get("parameters"))
+            if parameters:
+                arguments = parameters
+
+    parameters = _normalize_arguments(candidate.get("parameters"))
+    if parameters and not arguments:
+        arguments = parameters
+
+    if not isinstance(tool_name, str) or not tool_name:
+        return None
+
+    tool_call_id = candidate.get("id")
+    normalized: dict[str, Any] = {
+        "type": candidate.get("type") or "function",
+        "function": {
+            "name": tool_name,
+            "arguments": arguments,
+        },
+    }
+    if isinstance(tool_call_id, str) and tool_call_id:
+        normalized["id"] = tool_call_id
+
+    return normalized
+
+
+def normalize_tool_calls(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        normalized_calls: list[dict[str, Any]] = []
+        for item in value:
+            normalized = normalize_tool_call(item)
+            if normalized is not None:
+                normalized_calls.append(normalized)
+        return normalized_calls
+
+    if isinstance(value, dict):
+        # Some LLMs return a wrapper object with tool_calls, some return a single call.
+        if "tool_calls" in value and isinstance(value.get("tool_calls"), list):
+            return normalize_tool_calls(value.get("tool_calls"))
+        normalized = normalize_tool_call(value)
+        return [normalized] if normalized is not None else []
+
+    return []
+
 def append_assistant_message(messages: list[dict[str, Any]], response: dict[str, Any]) -> dict[str, Any]:
     assistant_message = response.get("message", {}) or {}
     normalized_message: dict[str, Any] = {"role": "assistant"}
@@ -15,7 +104,11 @@ def append_assistant_message(messages: list[dict[str, Any]], response: dict[str,
     if content is not None:
         normalized_message["content"] = content
 
-    tool_calls = assistant_message.get("tool_calls")
+    tool_calls = normalize_tool_calls(assistant_message.get("tool_calls"))
+    if not tool_calls:
+        parsed_from_content = extract_tool_call_from_content(content)
+        if parsed_from_content is not None:
+            tool_calls = [parsed_from_content]
     if tool_calls:
         normalized_message["tool_calls"] = tool_calls
 
@@ -57,6 +150,9 @@ def extract_tool_call_from_content(content: Any) -> dict[str, Any] | None:
 
     Supported shapes:
     - {"name": "tool_name", "arguments": {...}}
+    - {"function": "tool_name", "parameters": {...}}
+    - {"function": {"name": "tool_name", "arguments": {...}}}
+    - {"tool_calls": [...]} (single embedded call or wrapper)
     - {"tool_name": "..."} is intentionally not supported to avoid ambiguity.
     """
     if isinstance(content, dict):
@@ -72,25 +168,14 @@ def extract_tool_call_from_content(content: Any) -> dict[str, Any] | None:
     else:
         return None
 
-    if not isinstance(candidate, dict):
+    normalized = normalize_tool_call(candidate)
+    if normalized is None:
         return None
 
-    tool_name = candidate.get("name")
-    arguments = candidate.get("arguments", {})
+    if not normalized.get("id"):
+        normalized["id"] = f"json-{normalized['function']['name']}-{int(time.time() * 1000)}"
 
-    if not isinstance(tool_name, str) or not tool_name:
-        return None
-    if not isinstance(arguments, dict):
-        return None
-
-    return {
-        "id": f"json-{tool_name}-{int(time.time() * 1000)}",
-        "type": "function",
-        "function": {
-            "name": tool_name,
-            "arguments": arguments,
-        },
-    }
+    return normalized
 
 
 def build_dynamic_warning(

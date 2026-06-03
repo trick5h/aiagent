@@ -19,7 +19,7 @@ import config
 
 @mcp.tool()
 def read_file(path: str = Field(description="檔案路徑")):
-    """根據路徑讀取檔案內容。"""
+    """Given a file path, this function reads the content of the file and returns it as a string."""
     if ':' not in path or path.startswith('/'):
         path = os.path.join(config.WORKSPACE_DIR, path)
     with open(path, 'r', encoding='utf-8') as file:
@@ -30,8 +30,8 @@ def read_file(path: str = Field(description="檔案路徑")):
 def set_volume(
     level: int = Field(ge=0, le=100, description="音量大小") # ge: 大於等於, le: 小於等於 (沒有設定 default 值，欄位會被列入「必要參數」)
 ):
-    """這是測試調整音量大小。"""
-    return level
+    """Given a volume level, this function sets the system volume."""
+    return f'Volume set to {level}.'
 '''
 @mcp.tool()
 def search_online(

@@ -1,6 +1,7 @@
 {
-  "MODEL": "qwen2.5-coder:7b-instruct",
-  "SMALL_MODEL": "qwen2.5-coder:7b-instruct",
+  "MODEL": "mistral-nemo",
+  "SMALL_MODEL": "mistral-nemo",
+  "OLLAMA_HOST": "http://10.20.1.21:11434",
   "SERVER_COMMAND": "python",
   "SERVERS": {
     "my_team_server": {

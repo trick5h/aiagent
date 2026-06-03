@@ -14,7 +14,12 @@ WORKSPACE_DIR = config.WORKSPACE_DIR
 
 @mcp.tool()
 def get_system_health() -> str:
-    """查詢當前電腦的 CPU 使用率與磁碟剩餘空間。"""
+    """Return the current machine's CPU usage and disk free space.
+
+    This function queries the system for the current CPU utilization (percent)
+    and the disk usage for the root drive, and returns a human-readable
+    summary string.
+    """
     cpu_usage = psutil.cpu_percent(interval=1)
     total, used, free = shutil.disk_usage("/")
     
@@ -30,9 +35,13 @@ WORKSPACE_DIR = config.WORKSPACE_DIR
 
 @mcp.tool()
 def analyze_report_params(report_name: str = Field(description=".rdl檔案名稱")) -> str:
-    """
-    讀取指定的 RDL 檔案並回傳它需要的參數清單。
-    例如輸入 'Sales_Monthly'，會回傳該報表需要的日期、地區等參數。
+    """Read the specified RDL file and return a list of required parameters.
+
+    Given a report name (without extension), this function loads the
+    corresponding .rdl XML file from the workspace, extracts any
+    ReportParameter entries, and returns a human-readable list with
+    parameter names and their data types. If the file is missing or
+    parsing fails, an error message is returned.
     """
     file_path = os.path.join(WORKSPACE_DIR, f"{report_name}.rdl")
     if not os.path.exists(file_path):
@@ -61,9 +70,14 @@ def analyze_report_params(report_name: str = Field(description=".rdl檔案名稱
 
 @mcp.tool()
 def analyze_report_data(report_name: str = Field(description=".rdl檔案名稱")) -> str:
-    """
-    解析指定 RDL 檔案中的 Dataset，回傳該報表包含的所有資料欄位名稱。
-    這有助於了解報表輸出的數據結構。
+    """Parse the specified RDL file and return dataset field names.
+
+    The function accepts a report filename (with or without the .rdl
+    extension), loads the RDL XML from the workspace, locates DataSet
+    nodes and their Field definitions, and returns a summary describing
+    each dataset and the names of its fields. Useful for understanding
+    the structure of the report's output data. On error, returns an
+    explanatory message.
     """
     # 確保副檔名正確
     if not report_name.endswith(".rdl"):
@@ -112,6 +126,13 @@ def analyze_report_data(report_name: str = Field(description=".rdl檔案名稱")
         
 @mcp.tool()
 def get_url_image(id: int = Field(description="圖片ID")):
+    """Download an image by ID from a remote image handler and save it.
+
+    Builds a request URL using the provided image ID, downloads the
+    image, saves it into the workspace directory with a timestamped
+    filename, and returns the saved file path on success. On failure,
+    returns an error message describing the exception.
+    """
     try:
         url = "https://rirmsdev.csitech.com/RMS/AspSoft/Document/ViewImage/ImageHandler.ashx?type=L&image_id=" + str(id)
 
@@ -135,10 +156,19 @@ def get_url_image(id: int = Field(description="圖片ID")):
 
 @mcp.tool()
 def no_more_tools():
-    """如果你認為全部任務已經完成，執行這個來表示你不需要額外工具了。"""
-    return "全部執行完成，不須再呼叫工具。"
+    """Indicate that all tasks are complete and no further tools are needed.
+
+    This is intended for use by an agent to signal that it does not
+    require any additional tool calls to complete its work.
+    """
+    return "All tasks completed; no further tools required."
 
 @mcp.tool()
 def no_tools_available():
-    """如果你發現沒有任何與任務相關的工具可用，執行這個來表示找不到工具。"""
-    return "全部執行完成，沒有任何可用工具，不須再呼叫工具。"
+    """Indicate that no relevant tools are available for the task.
+
+    Use this to signal that the agent could not find any tools related
+    to the requested operation and therefore cannot proceed with tool
+    assistance.
+    """
+    return "All tasks completed; No available tools, so no further tools required."

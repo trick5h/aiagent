@@ -16,11 +16,11 @@ from src.prompt import *
 from src.stream import *
 from src.client import connect_all_mcp_servers
 
-# 隱藏所有過時警告
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 def start_ollama():
+import ollama
     try:
         # 在背景啟動 Ollama 服務（避免阻塞 Python 程式）
         print("正在啟動 Ollama 服務...")
@@ -286,7 +286,7 @@ async def run_mcp_agent():
 
                             # 只有在執行擁有足夠資訊的工具時，才標記 observation 可用
                             if has_successful_execution:
-                                if "全部執行完成" in last_tool_text or "不須再呼叫工具" in last_tool_text:
+                                if "All tasks completed;" in last_tool_text or "no further tools required." in last_tool_text:
                                     tool_needed = False
                                 else:
                                     tool_needed = True                                  
