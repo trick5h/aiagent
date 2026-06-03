@@ -11,10 +11,10 @@ from datetime import datetime, date
 # Server 如果是本機，可以用 '.' 或 'localhost'
 conn_str = (
     'DRIVER={ODBC Driver 17 for SQL Server};'
-    'SERVER=10.1.3.61;'
-    'DATABASE=RI_RMS30_DEV;'
-    'UID=sa;'
-    'PWD=infoshare;'
+    'SERVER=10.1.0.1;'
+    'DATABASE=DEV;'
+    'UID=001;'
+    'PWD=001;'
 )
 
 
