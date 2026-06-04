@@ -12,7 +12,7 @@ from src.prompt import normalize_chat_response
 
 #async
 def is_user_query_needs_tools(user_input: str, tool_result: str | None) -> bool:
-    """智能檢測工具是否返回所需數據，以輔助判斷是否需要工具。
+    """ (This is deleted in the new version, but I keep it here for reference.)
     Use the (small) LLM to classify whether this user query needs tools.
     Returns True if tools are needed, False if not, or None on failure.
     The model is asked to reply exactly YES or NO.

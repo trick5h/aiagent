@@ -158,8 +158,7 @@ def get_url_image(id: int = Field(description="圖片ID")):
 def no_more_tools():
     """Indicate that all tasks are complete and no further tools are needed.
 
-    This is intended for use by an agent to signal that it does not
-    require any additional tool calls to complete its work.
+    Use this to signal that it does not require any additional tool calls to complete your work.
     """
     return "All tasks completed; no further tools required."
 
@@ -167,7 +166,7 @@ def no_more_tools():
 def no_tools_available():
     """Indicate that no relevant tools are available for the task.
 
-    Use this to signal that the agent could not find any tools related
+    Use this to signal that the you could not find any tools related
     to the requested operation and therefore cannot proceed with tool
     assistance.
     """
